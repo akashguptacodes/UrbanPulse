@@ -1,0 +1,47 @@
+// UrbanPulse Prisma Schema — Sprint 2: Authentication & Core Persistence
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  CITIZEN
+  ADMIN
+}
+
+model User {
+  id            String     @id @default(uuid()) @db.Uuid
+  email         String     @unique @db.VarChar(255)
+  password_hash String     @db.VarChar(255)
+  full_name     String     @db.VarChar(100)
+  role          Role       @default(CITIZEN)
+  created_at    DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime   @updatedAt @db.Timestamptz(6)
+
+  // Relationships
+  audit_logs    AuditLog[]
+
+  @@index([role])
+  @@map("users")
+}
+
+model AuditLog {
+  id                 String   @id @default(uuid()) @db.Uuid
+  user_id            String?  @db.Uuid
+  user               User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  action             String   @db.VarChar(50)
+  target_entity_type String   @db.VarChar(50)
+  target_entity_id   String   @db.Uuid
+  details            Json     @default("{}")
+  ip_address         String?  @db.VarChar(45)
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([target_entity_type, target_entity_id])
+  @@index([user_id, created_at(sort: Desc)])
+  @@map("audit_logs")
+}
