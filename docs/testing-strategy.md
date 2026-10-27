@@ -56,18 +56,29 @@ UrbanPulse employs a structured, multi-tiered testing strategy designed to verif
   - Verify `ADMIN` user can access all complaints, update status, and review AI candidates.
 
 ### 3.2 Complaint Management & Storage Test Suite
+
+> **Sprint 3 Test Execution:** Verified with 28 automated tests in `backend/tests/complaint.test.ts` covering creation validation, RBAC listing, ownership access control, status transitions, and audit history.
+
 - **Input Validation:**
-  - Verify submitting a complaint with an unknown category (e.g. `TRAFFIC`) returns `422 Unprocessable Entity`.
-  - Verify coordinates outside range (e.g., latitude $95.0$) return `422`.
-  - Verify description length constraints (minimum 10 characters, maximum 2000).
-- **Evidence Upload Security:**
-  - Verify file upload of executable `.exe` or `.sh` masked as `.jpg` is detected via magic bytes and rejected (`400 Bad Request`).
-  - Verify file uploads exceeding 5 MB return `400 Bad Request`.
-  - Verify uploaded images have EXIF metadata stripped and are written with UUID filenames.
+  - Verify submitting a complaint with an unknown category (e.g. `BRIDGES`) returns `422 Unprocessable Entity`.
+  - Verify coordinates outside range (e.g., latitude $95.5$ or longitude $195.5$) return `422`.
+  - Verify description and title length constraints (title $<5$ chars or description $<10$ chars rejected with `422`).
+  - Verify disaster complaint without `disaster_type` is rejected (`422`).
+  - Verify non-disaster complaint carrying a `disaster_type` is rejected (`422`).
+  - Verify creator is strictly derived from verified session token; client-forged `citizen_id` is ignored.
+- **Access Control & Scoping:**
+  - Verify unauthenticated requests return `401 Unauthorized`.
+  - Verify `CITIZEN` listing returns strictly complaints created by that citizen.
+  - Verify `ADMIN` listing returns complaints across all users.
+  - Verify `CITIZEN` attempting to view another citizen's complaint receives `404 Not Found` (preventing ID enumeration).
+  - Verify pagination (`page`, `limit`) and maximum limit enforcement (limit $>100$ returns `422`).
+  - Verify deterministic sorting with tie-breaker.
 - **Status State Machine & Audit History:**
-  - Verify transition from `SUBMITTED` -> `UNDER_REVIEW` succeeds and appends a `ComplaintStatusHistory` record.
-  - Verify illegal transition from `SUBMITTED` directly to `RESOLVED` fails with `400 Bad Request`.
-  - Verify transition to `REJECTED` without a reason note fails with `400 Bad Request`.
+  - Verify transition from `SUBMITTED` -> `UNDER_REVIEW` succeeds and creates `ComplaintStatusHistory` atomically.
+  - Verify illegal transition from `SUBMITTED` directly to `RESOLVED` fails with `400 Bad Request` (`INVALID_STATUS_TRANSITION`).
+  - Verify transition to `REJECTED` without reason/notes fails with `422` or `400`.
+  - Verify `CITIZEN` attempting status update receives `403 Forbidden`.
+  - Verify terminal statuses (`RESOLVED`, `REJECTED`) reject subsequent transitions with `400`.
 
 ### 3.3 AI Microservice Correctness Tests
 - **Duplicate Service (`ai-services/duplicate_service`):**

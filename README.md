@@ -2,8 +2,8 @@
 ### AI-Assisted Civic Issue Reporting & Complaint Management Platform
 
 > [!NOTE]
-> **CURRENT PROJECT STATUS: SPRINT 2 (POSTGRESQL, PRISMA & AUTHENTICATION COMPLETED)**  
-> PostgreSQL persistence via Prisma ORM (v5.22.0 LTS), secure password hashing (`bcrypt`), HttpOnly cookie JWT session management, server-side role-based authorization (`CITIZEN`, `ADMIN`), and minimal frontend authentication flows are implemented and verified. Ready for Sprint 3 (Complaint Management Backend).
+> **CURRENT PROJECT STATUS: SPRINT 3 (COMPLAINT MANAGEMENT BACKEND COMPLETED)**  
+> Complete complaint management backend implemented: fixed categories (`POTHOLES`, `STREET_LIGHTS`, `GARBAGE`, `DISASTERS`), disaster type validation, atomic status transitions with immutable history, server-derived creator identity, owner-scoped citizen listings, admin cross-user search & triage, file storage abstraction, and 28 automated tests. Ready for Sprint 4 (Frontend Complaint UI & Integration).
 
 ---
 
@@ -51,36 +51,36 @@ UrbanPulse/
 ├── frontend/                 # React 18 + TypeScript + Vite + Tailwind CSS
 │   ├── src/
 │   │   ├── layouts/         # Responsive layouts (RootLayout)
-│   │   ├── pages/           # DevStatusPage, NotFoundPage
-│   │   ├── services/        # Axios API client (apiClient.ts)
+│   │   ├── pages/           # LoginPage, RegisterPage, DevStatusPage, NotFoundPage
+│   │   ├── services/        # Axios API client (apiClient.ts, authApi.ts)
+│   │   ├── context/         # AuthContext
 │   │   ├── App.tsx          # React Router setup
 │   │   ├── main.tsx         # DOM entrypoint
 │   │   └── index.css        # Tailwind directives
-│   ├── tests/               # Vitest + React Testing Library tests
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── vite.config.ts
 ├── backend/                  # Node.js + Express + TypeScript
+│   ├── prisma/              # Prisma schema & SQL migrations
+│   │   ├── schema.prisma    # Models: User, AuditLog, Complaint, ComplaintEvidence, ComplaintStatusHistory
+│   │   └── migrations/      # Version-controlled migrations
 │   ├── src/
 │   │   ├── config/          # Zod-validated environment config (env.ts)
-│   │   ├── middleware/      # errorHandler, notFoundHandler
-│   │   ├── routes/          # health router (/api/health)
+│   │   ├── controllers/     # authController.ts, complaintController.ts
+│   │   ├── middleware/      # authMiddleware, errorHandler, notFoundHandler, rateLimiter
+│   │   ├── repositories/    # prisma.ts, userRepository.ts, complaintRepository.ts
+│   │   ├── routes/          # health.ts, auth.ts, complaints.ts
+│   │   ├── services/        # authService.ts, complaintService.ts, statusTransitionPolicy.ts, storageService.ts
+│   │   ├── types/           # auth.ts, complaint.ts
+│   │   ├── validators/      # authValidators.ts, complaintValidators.ts
 │   │   ├── app.ts           # Express app factory (helmet, cors, routes)
 │   │   └── server.ts        # Server entry with graceful shutdown
-│   ├── tests/               # Vitest + Supertest endpoint tests
+│   ├── tests/               # Vitest + Supertest endpoint tests (complaint.test.ts)
 │   ├── package.json
 │   └── tsconfig.json
 ├── ai-services/
 │   ├── duplicate_service/    # Python FastAPI duplicate detection scaffold
-│   │   ├── app/             # config, health router, main.py
-│   │   ├── tests/           # Pytest health smoke tests
-│   │   ├── requirements.txt
-│   │   └── README.md
 │   └── priority_service/     # Python FastAPI priority assessment scaffold
-│       ├── app/             # config, health router, main.py
-│       ├── tests/           # Pytest health smoke tests
-│       ├── requirements.txt
-│       └── README.md
 ├── infra/
 │   └── docker/              # Containerization roadmap & documentation
 ├── docs/                    # Complete architectural blueprints & runbooks
@@ -123,12 +123,18 @@ npm run db:migrate:deploy
 - **Priority Service:** `cd ai-services/priority_service && .\venv\Scripts\uvicorn app.main:app --port 8002 --reload`  
   *(Listens on [http://127.0.0.1:8002](http://127.0.0.1:8002))*
 
-### Available Authentication & Health Endpoints
-- Health: `GET http://localhost:4000/api/health`
-- Register: `POST http://localhost:4000/api/auth/register`
-- Login: `POST http://localhost:4000/api/auth/login`
-- Current User: `GET http://localhost:4000/api/auth/me`
-- Logout: `POST http://localhost:4000/api/auth/logout`
+### Available Endpoints Summary
+- **Health:** `GET http://localhost:4000/api/health`
+- **Auth:**
+  - Register: `POST http://localhost:4000/api/auth/register`
+  - Login: `POST http://localhost:4000/api/auth/login`
+  - Current User: `GET http://localhost:4000/api/auth/me`
+  - Logout: `POST http://localhost:4000/api/auth/logout`
+- **Complaints (`/api/complaints` and `/api/v1/complaints`):**
+  - Create Complaint: `POST http://localhost:4000/api/complaints` (Authenticated)
+  - List Complaints: `GET http://localhost:4000/api/complaints?page=1&limit=20` (Citizen sees own, Admin sees all)
+  - Complaint Detail: `GET http://localhost:4000/api/complaints/:id` (Authenticated Owner or Admin)
+  - Update Status: `PATCH http://localhost:4000/api/complaints/:id/status` (Admin only)
 
 ---
 
@@ -174,8 +180,8 @@ The complete technical blueprint is documented across the [`docs/`](file:///d:/U
 - **Sprint 0:** Requirements, System Architecture and Project Blueprint *(Done)*
 - **Sprint 1:** Monorepo Setup & Development Environment *(Done)*
 - **Sprint 2:** Database Schema & Authentication Backend *(Done)*
-- **Sprint 3:** Complaint Management Backend & File Uploads *(Next)*
-- **Sprint 4:** Frontend Web Application & Backend Integration
+- **Sprint 3:** Complaint Management Backend & File Uploads *(Done)*
+- **Sprint 4:** Frontend Web Application & Backend Integration *(Next)*
 - **Sprint 5:** Duplicate Detection AI Microservice
 - **Sprint 6:** Priority Assessment AI Microservice
 - **Sprint 7:** AI and Backend Integration & Administrative Review UI

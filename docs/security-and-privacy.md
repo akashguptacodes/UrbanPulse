@@ -65,8 +65,8 @@ The system enforces strict server-side middleware for every non-public route:
 | Register / Login | Allowed | N/A | N/A | Public endpoints with strict rate limiting. |
 | Submit Complaint | Denied (401) | Allowed | Allowed | `requireAuth` |
 | View Own Complaints | Denied (401) | Allowed | Allowed | `requireAuth` + SQL `WHERE citizen_id = req.user.id` |
-| View Other Citizen's Complaint | Denied (401) | **Denied (403)** | Allowed | Ownership check in complaint controller. |
-| Update Complaint Status | Denied (401) | **Denied (403)** | Allowed | `requireRole('ADMIN')` |
+| View Other Citizen's Complaint | Denied (401) | **Denied (404)** | Allowed | Ownership check in complaint service. Returning 404 prevents existence leakage and ID probing. |
+| Update Complaint Status | Denied (401) | **Denied (403)** | Allowed | `requireRole('ADMIN')` + Centralized `statusTransitionPolicy`. |
 | Review AI Duplicates & Priority | Denied (401) | **Denied (403)** | Allowed | `requireRole('ADMIN')` |
 | View Admin Stats & Audit Logs | Denied (401) | **Denied (403)** | Allowed | `requireRole('ADMIN')` |
 

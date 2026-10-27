@@ -157,12 +157,14 @@ All error responses adhere to a consistent error schema:
 
 ---
 
-### 2.2 Complaint Management Endpoints (`/api/v1/complaints`)
+### 2.2 Complaint Management Endpoints (`/api/complaints` and `/api/v1/complaints`)
 
-#### `POST /api/v1/complaints`
-- **Purpose:** Submits a new civic complaint with optional photo evidence.
+> **Sprint 3 Implementation Status:** Fully Implemented & Verified with 28 automated tests. Both `/api/complaints` and `/api/v1/complaints` are active route aliases. All endpoints enforce authentication, RBAC, input validation via Zod, and centralized status lifecycle transitions.
+
+#### `POST /api/complaints` (also `/api/v1/complaints`)
+- **Purpose:** Submits a new civic complaint with optional photo evidence metadata.
 - **Required Role:** Authenticated `CITIZEN` (or `ADMIN`).
-- **Content-Type:** `multipart/form-data`
+- **Content-Type:** `application/json` (or `multipart/form-data`)
 - **Form Fields:**
   - `primary_category` (string, required): One of `POTHOLES`, `STREET_LIGHTS`, `GARBAGE`, `DISASTERS`.
   - `disaster_type` (string, optional): One of `FIRE`, `FLOOD`, `OTHER`. (Required if `primary_category == 'DISASTERS'`).

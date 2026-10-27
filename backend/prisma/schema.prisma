@@ -1,4 +1,4 @@
-// UrbanPulse Prisma Schema — Sprint 2: Authentication & Core Persistence
+// UrbanPulse Prisma Schema — Sprint 3: Complaint Management Backend
 
 datasource db {
   provider = "postgresql"
@@ -14,17 +14,34 @@ enum Role {
   ADMIN
 }
 
+enum ComplaintCategory {
+  POTHOLES
+  STREET_LIGHTS
+  GARBAGE
+  DISASTERS
+}
+
+enum ComplaintStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
 model User {
-  id            String     @id @default(uuid()) @db.Uuid
-  email         String     @unique @db.VarChar(255)
-  password_hash String     @db.VarChar(255)
-  full_name     String     @db.VarChar(100)
-  role          Role       @default(CITIZEN)
-  created_at    DateTime   @default(now()) @db.Timestamptz(6)
-  updated_at    DateTime   @updatedAt @db.Timestamptz(6)
+  id             String                   @id @default(uuid()) @db.Uuid
+  email          String                   @unique @db.VarChar(255)
+  password_hash  String                   @db.VarChar(255)
+  full_name      String                   @db.VarChar(100)
+  role           Role                     @default(CITIZEN)
+  created_at     DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime                 @updatedAt @db.Timestamptz(6)
 
   // Relationships
-  audit_logs    AuditLog[]
+  audit_logs     AuditLog[]
+  complaints     Complaint[]
+  status_changes ComplaintStatusHistory[]
 
   @@index([role])
   @@map("users")
@@ -44,4 +61,58 @@ model AuditLog {
   @@index([target_entity_type, target_entity_id])
   @@index([user_id, created_at(sort: Desc)])
   @@map("audit_logs")
+}
+
+model Complaint {
+  id               String                   @id @default(uuid()) @db.Uuid
+  citizen_id       String                   @db.Uuid
+  citizen          User                     @relation(fields: [citizen_id], references: [id], onDelete: Restrict)
+  primary_category ComplaintCategory
+  disaster_type    String?                  @db.VarChar(30)
+  title            String                   @db.VarChar(150)
+  description      String                   @db.Text
+  latitude         Decimal                  @db.Decimal(10, 7)
+  longitude        Decimal                  @db.Decimal(10, 7)
+  address_text     String?                  @db.VarChar(255)
+  current_status   ComplaintStatus          @default(SUBMITTED)
+  created_at       DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime                 @updatedAt @db.Timestamptz(6)
+
+  // Relationships
+  evidence         ComplaintEvidence[]
+  status_history   ComplaintStatusHistory[]
+
+  @@index([citizen_id, created_at(sort: Desc)])
+  @@index([current_status, primary_category, created_at(sort: Desc)])
+  @@index([latitude, longitude])
+  @@map("complaints")
+}
+
+model ComplaintEvidence {
+  id                String    @id @default(uuid()) @db.Uuid
+  complaint_id      String    @db.Uuid
+  complaint         Complaint @relation(fields: [complaint_id], references: [id], onDelete: Cascade)
+  storage_key       String    @db.VarChar(255)
+  original_filename String    @db.VarChar(255)
+  mime_type         String    @db.VarChar(50)
+  file_size_bytes   Int
+  uploaded_at       DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([complaint_id])
+  @@map("complaint_evidence")
+}
+
+model ComplaintStatusHistory {
+  id                 String           @id @default(uuid()) @db.Uuid
+  complaint_id       String           @db.Uuid
+  complaint          Complaint        @relation(fields: [complaint_id], references: [id], onDelete: Cascade)
+  changed_by_user_id String           @db.Uuid
+  changed_by         User             @relation(fields: [changed_by_user_id], references: [id], onDelete: Restrict)
+  previous_status    ComplaintStatus?
+  new_status         ComplaintStatus
+  reason_or_notes    String?          @db.Text
+  created_at         DateTime         @default(now()) @db.Timestamptz(6)
+
+  @@index([complaint_id, created_at(sort: Asc)])
+  @@map("complaint_status_history")
 }

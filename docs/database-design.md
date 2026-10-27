@@ -366,7 +366,19 @@ The foundational authentication and auditing schema is implemented and generated
 - **Database Engine Compatibility:**
   - PostgreSQL 16/17 and Neon Cloud PostgreSQL (Serverless) via standard connection pooling (`DATABASE_URL`).
 
-### 7.2 Planned for Subsequent Sprints
-- **Sprint 3 (Complaint Management):** `Complaint`, `ComplaintEvidence`, `ComplaintStatusHistory`.
+### 7.2 Implemented in Sprint 3 (Active Schema)
+The civic complaint management persistence schema is implemented and generated via Prisma Client 5.22.0:
+
+- **Models:**
+  - `Complaint`: Central civic complaint entity containing creator ID, category, optional disaster type, title, description, coordinates (DECIMAL 10,7), and current status with indexes on `(citizen_id, created_at DESC)`, `(current_status, primary_category, created_at DESC)`, and `(latitude, longitude)`.
+  - `ComplaintEvidence`: Photo attachment metadata tracking opaque storage key, original filename, MIME type, and file size in bytes with foreign key relation to Complaint (CASCADE).
+  - `ComplaintStatusHistory`: Immutable audit history of all status transitions tracking previous status, new status, changed_by user, and mandatory reason notes for rejections (CASCADE).
+- **Enums:**
+  - `ComplaintCategory`: `POTHOLES`, `STREET_LIGHTS`, `GARBAGE`, `DISASTERS`.
+  - `ComplaintStatus`: `SUBMITTED`, `UNDER_REVIEW`, `IN_PROGRESS`, `RESOLVED`, `REJECTED`.
+- **Migration:**
+  - `20261027000000_add_complaints` located in `backend/prisma/migrations/`.
+
+### 7.3 Planned for Subsequent Sprints
 - **Sprint 7 (AI Integration):** `DuplicateDetectionResult`, `DuplicateCandidate`, `PriorityAssessment`.
 
