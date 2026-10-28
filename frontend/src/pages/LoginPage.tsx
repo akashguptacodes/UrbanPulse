@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.tsx';
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,7 +25,9 @@ export const LoginPage: React.FC = () => {
     setIsSubmitting(true);
     try {
       await login({ email: email.trim(), password });
-      navigate('/');
+      // Redirect back to original destination or to /complaints
+      const fromPath = (location.state as { from?: { pathname?: string } })?.from?.pathname || '/complaints';
+      navigate(fromPath, { replace: true });
     } catch (err: unknown) {
       const message =
         err && typeof err === 'object' && 'message' in err

@@ -2,8 +2,8 @@
 ### AI-Assisted Civic Issue Reporting & Complaint Management Platform
 
 > [!NOTE]
-> **CURRENT PROJECT STATUS: SPRINT 3 (COMPLAINT MANAGEMENT BACKEND COMPLETED)**  
-> Complete complaint management backend implemented: fixed categories (`POTHOLES`, `STREET_LIGHTS`, `GARBAGE`, `DISASTERS`), disaster type validation, atomic status transitions with immutable history, server-derived creator identity, owner-scoped citizen listings, admin cross-user search & triage, file storage abstraction, and 28 automated tests. Ready for Sprint 4 (Frontend Complaint UI & Integration).
+> **CURRENT PROJECT STATUS: SPRINT 4 (FRONTEND DEVELOPMENT & BACKEND INTEGRATION COMPLETED)**  
+> Complete responsive React 18 frontend with TypeScript, Vite, Tailwind CSS, and React Router connected to the Express backend. Features role-scoped complaint listing with live filtering and pagination, complaint submission with four fixed categories and conditional disaster subtypes, accessible coordinate input, complaint detail with audit timeline, and admin status management console. 17 frontend unit and integration tests passing. Ready for Sprint 5 (Duplicate Detection AI Microservice).
 
 ---
 
@@ -99,6 +99,7 @@ UrbanPulse/
 ```bash
 # Copy environment configuration
 cp .env.example .env
+cp frontend/.env.example frontend/.env
 ```
 
 ### Step 2: Install Dependencies & Setup Database
@@ -123,6 +124,19 @@ npm run db:migrate:deploy
 - **Priority Service:** `cd ai-services/priority_service && .\venv\Scripts\uvicorn app.main:app --port 8002 --reload`  
   *(Listens on [http://127.0.0.1:8002](http://127.0.0.1:8002))*
 
+### Implemented Frontend Pages & Routing
+- `/` — **Landing Page:** Civic issue overview, 4 categories, emergency subtype explanations, and role-aware CTAs.
+- `/register` — **Registration:** Citizen account registration with client and backend validation.
+- `/login` — **Login:** Authentication with HttpOnly cookie session management and destination redirect.
+- `/complaints` — **Complaint Queue:** Role-scoped complaint listings (citizens see their reports; admins see citywide reports) with filtering by category, status, conditional disaster subtype, text search, and pagination.
+- `/complaints/new` — **Report Complaint:** Category selection, dynamic disaster emergency subtypes (`FIRE`, `FLOOD`, `OTHER`), manual coordinate entry + browser geolocation helper, and duplicate submission prevention.
+- `/complaints/:id` — **Complaint Details:** Full issue metadata, location coordinates, audit history timeline, and administrator status transition console.
+- `*` — **Not Found Page:** 404 error page with navigation back to home.
+
+### Intentionally Deferred Features Notice
+- **Evidence / Photo File Uploads:** Photographic file uploads are deferred per Sprint 0 & 3 boundaries. An honest notice is displayed on the complaint form; no fake multipart uploads or placeholder files are sent.
+- **AI Microservices Integration:** The Duplicate Detection and Priority Assessment microservices run as standalone services in Python; administrative review UI integration is scheduled for Sprint 7.
+
 ### Available Endpoints Summary
 - **Health:** `GET http://localhost:4000/api/health`
 - **Auth:**
@@ -140,16 +154,24 @@ npm run db:migrate:deploy
 
 ## 6. Testing & Quality Verification
 
-Run smoke tests across all services:
+Run tests, linting, and builds across all services:
 
 ```bash
-# Test backend routes & authentication test suite
-cd backend && npm run test
+# Frontend tests (17 automated unit and integration tests)
+cd frontend && npm test
 
-# Test frontend rendering & auth controls
-cd frontend && npm run test
+# Frontend linting & type-checking / production build
+cd frontend && npm run lint
+cd frontend && npm run build
 
-# Test AI services
+# Backend tests (28 automated unit and route integration tests)
+cd backend && npm test
+
+# Backend linting & type-checking / build
+cd backend && npm run lint
+cd backend && npm run build
+
+# Test Python AI services
 cd ai-services/duplicate_service && pytest tests/
 cd ai-services/priority_service && pytest tests/
 ```
@@ -181,8 +203,8 @@ The complete technical blueprint is documented across the [`docs/`](file:///d:/U
 - **Sprint 1:** Monorepo Setup & Development Environment *(Done)*
 - **Sprint 2:** Database Schema & Authentication Backend *(Done)*
 - **Sprint 3:** Complaint Management Backend & File Uploads *(Done)*
-- **Sprint 4:** Frontend Web Application & Backend Integration *(Next)*
-- **Sprint 5:** Duplicate Detection AI Microservice
+- **Sprint 4:** Frontend Web Application & Backend Integration *(Done)*
+- **Sprint 5:** Duplicate Detection AI Microservice *(Next)*
 - **Sprint 6:** Priority Assessment AI Microservice
 - **Sprint 7:** AI and Backend Integration & Administrative Review UI
 - **Sprint 8:** Comprehensive Testing & AI Evaluation

@@ -47,7 +47,7 @@ export const RegisterPage: React.FC = () => {
         email: email.trim(),
         password,
       });
-      navigate('/');
+      navigate('/complaints');
     } catch (err: unknown) {
       const message =
         err && typeof err === 'object' && 'message' in err
