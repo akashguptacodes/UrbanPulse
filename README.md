@@ -95,11 +95,18 @@ UrbanPulse/
 
 ## 5. Quickstart & Development Commands
 
-### Step 1: Environment Setup
+### Step 1: Per-Service Environment Setup
+Each of the 4 services maintains its own isolated `.env` configuration file for standalone deployment:
 ```bash
-# Copy environment configuration
-cp .env.example .env
+# Frontend Service
 cp frontend/.env.example frontend/.env
+
+# Backend API Service
+cp backend/.env.example backend/.env
+
+# AI Microservices (FastAPI)
+cp ai-services/priority_service/.env.example ai-services/priority_service/.env
+cp ai-services/duplicate_service/.env.example ai-services/duplicate_service/.env
 ```
 
 ### Step 2: Install Dependencies & Setup Database

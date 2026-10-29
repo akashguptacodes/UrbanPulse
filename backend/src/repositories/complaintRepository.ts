@@ -54,62 +54,57 @@ export class PrismaComplaintRepository implements IComplaintRepository {
     citizenId: string,
     input: CreateComplaintInput
   ): Promise<ComplaintWithRelations> {
-    return prisma.$transaction(async (tx) => {
-      // 1. Create the complaint record with initial SUBMITTED status
-      const createdComplaint = await tx.complaint.create({
-        data: {
-          citizen_id: citizenId,
-          primary_category: input.primary_category,
-          disaster_type: input.disaster_type ?? null,
-          title: input.title,
-          description: input.description,
-          latitude: new Prisma.Decimal(input.latitude),
-          longitude: new Prisma.Decimal(input.longitude),
-          address_text: input.address_text ?? null,
-          current_status: ComplaintStatus.SUBMITTED,
-          evidence: input.evidence && input.evidence.length > 0
-            ? {
-                create: input.evidence.map((e) => ({
-                  original_filename: e.original_filename,
-                  mime_type: e.mime_type,
-                  file_size_bytes: e.file_size_bytes,
-                  storage_key: e.storage_key,
-                })),
-              }
-            : undefined,
-        },
-        include: {
-          citizen: { select: { id: true, full_name: true, email: true } },
-          evidence: true,
-        },
-      });
-
-      // 2. Insert the initial status history record in the same atomic transaction
-      await tx.complaintStatusHistory.create({
-        data: {
-          complaint_id: createdComplaint.id,
-          changed_by_user_id: citizenId,
-          previous_status: null,
-          new_status: ComplaintStatus.SUBMITTED,
-          reason_or_notes: 'Initial complaint submission',
-        },
-      });
-
-      // Fetch complete record with relations
-      const fullComplaint = await tx.complaint.findUniqueOrThrow({
-        where: { id: createdComplaint.id },
-        include: {
-          citizen: { select: { id: true, full_name: true, email: true } },
-          evidence: true,
-          status_history: {
-            orderBy: { created_at: 'asc' },
-            include: { changed_by: { select: { full_name: true, email: true } } },
+    return prisma.$transaction(
+      async (tx) => {
+        // Create the complaint and initial status history in a single atomic nested query
+        const fullComplaint = await tx.complaint.create({
+          data: {
+            citizen_id: citizenId,
+            primary_category: input.primary_category,
+            disaster_type: input.disaster_type ?? null,
+            title: input.title,
+            description: input.description,
+            latitude: new Prisma.Decimal(input.latitude),
+            longitude: new Prisma.Decimal(input.longitude),
+            address_text: input.address_text ?? null,
+            current_status: ComplaintStatus.SUBMITTED,
+            evidence:
+              input.evidence && input.evidence.length > 0
+                ? {
+                    create: input.evidence.map((e) => ({
+                      original_filename: e.original_filename,
+                      mime_type: e.mime_type,
+                      file_size_bytes: e.file_size_bytes,
+                      storage_key: e.storage_key,
+                    })),
+                  }
+                : undefined,
+            status_history: {
+              create: {
+                changed_by_user_id: citizenId,
+                previous_status: null,
+                new_status: ComplaintStatus.SUBMITTED,
+                reason_or_notes: 'Initial complaint submission',
+              },
+            },
           },
-        },
-      });
+          include: {
+            citizen: { select: { id: true, full_name: true, email: true } },
+            evidence: true,
+            status_history: {
+              orderBy: { created_at: 'asc' },
+              include: { changed_by: { select: { full_name: true, email: true } } },
+            },
+          },
+        });
 
-      return fullComplaint as ComplaintWithRelations;
-    });
+        return fullComplaint as ComplaintWithRelations;
+      },
+      {
+        maxWait: 10000,
+        timeout: 30000,
+      }
+    );
   }
 
   /**
@@ -171,56 +166,54 @@ export class PrismaComplaintRepository implements IComplaintRepository {
     changedByUserId: string,
     reasonOrNotes?: string | null
   ): Promise<ComplaintWithRelations> {
-    return prisma.$transaction(async (tx) => {
-      // 1. Fetch current complaint with a write lock / check
-      const current = await tx.complaint.findUnique({
-        where: { id: complaintId },
-      });
+    return prisma.$transaction(
+      async (tx) => {
+        // 1. Fetch current complaint with a write lock / check
+        const current = await tx.complaint.findUnique({
+          where: { id: complaintId },
+        });
 
-      if (!current) {
-        const error: AppError = new Error('Complaint not found');
-        error.statusCode = 404;
-        error.code = 'NOT_FOUND';
-        throw error;
-      }
+        if (!current) {
+          const error: AppError = new Error('Complaint not found');
+          error.statusCode = 404;
+          error.code = 'NOT_FOUND';
+          throw error;
+        }
 
-      const previousStatus = current.current_status;
+        const previousStatus = current.current_status;
 
-      // 2. Update complaint status
-      await tx.complaint.update({
-        where: { id: complaintId },
-        data: {
-          current_status: newStatus,
-          updated_at: new Date(),
-        },
-      });
-
-      // 3. Insert status history record
-      await tx.complaintStatusHistory.create({
-        data: {
-          complaint_id: complaintId,
-          changed_by_user_id: changedByUserId,
-          previous_status: previousStatus,
-          new_status: newStatus,
-          reason_or_notes: reasonOrNotes?.trim() || null,
-        },
-      });
-
-      // 4. Return updated complaint with relations
-      const fullComplaint = await tx.complaint.findUniqueOrThrow({
-        where: { id: complaintId },
-        include: {
-          citizen: { select: { id: true, full_name: true, email: true } },
-          evidence: true,
-          status_history: {
-            orderBy: { created_at: 'asc' },
-            include: { changed_by: { select: { full_name: true, email: true } } },
+        // 2. Update complaint status and append status history atomically in one query
+        const fullComplaint = await tx.complaint.update({
+          where: { id: complaintId },
+          data: {
+            current_status: newStatus,
+            updated_at: new Date(),
+            status_history: {
+              create: {
+                changed_by_user_id: changedByUserId,
+                previous_status: previousStatus,
+                new_status: newStatus,
+                reason_or_notes: reasonOrNotes?.trim() || null,
+              },
+            },
           },
-        },
-      });
+          include: {
+            citizen: { select: { id: true, full_name: true, email: true } },
+            evidence: true,
+            status_history: {
+              orderBy: { created_at: 'asc' },
+              include: { changed_by: { select: { full_name: true, email: true } } },
+            },
+          },
+        });
 
-      return fullComplaint as ComplaintWithRelations;
-    });
+        return fullComplaint as ComplaintWithRelations;
+      },
+      {
+        maxWait: 10000,
+        timeout: 30000,
+      }
+    );
   }
 
   /**

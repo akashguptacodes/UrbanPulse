@@ -1,15 +1,17 @@
+import path from 'path';
 import dotenv from 'dotenv';
 import { z } from 'zod';
 
-// Load environment variables from .env if present
-dotenv.config();
+// Load environment variables directly from backend/.env (supports independent deployment)
+const backendEnvPath = path.resolve(__dirname, '../../.env');
+dotenv.config({ path: backendEnvPath });
+dotenv.config(); // fallback for current working directory .env
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z
-    .string()
-    .default('4000')
-    .transform((val) => parseInt(val, 10))
+    .preprocess((val) => val ?? process.env.BACKEND_PORT, z.string().default('4000'))
+    .transform((val) => parseInt(String(val), 10))
     .refine((val) => !isNaN(val) && val > 0 && val <= 65535, {
       message: 'PORT must be a valid port number (1-65535)',
     }),
