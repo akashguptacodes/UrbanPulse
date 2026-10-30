@@ -6,6 +6,7 @@ import {
   CreateComplaintPayload,
   ComplaintFilters,
   UpdateStatusPayload,
+  EvidenceItemPayload,
 } from '../types/complaint.ts';
 
 interface SingleComplaintResponse {
@@ -90,4 +91,31 @@ export async function updateComplaintStatus(
 ): Promise<ComplaintDetail> {
   const response = await apiClient.patch<UpdateStatusResponse>(`/complaints/${id}/status`, payload);
   return response.data.data.complaint;
+}
+
+/**
+ * Uploads an evidence image file (JPEG, PNG, WebP) to the storage service
+ */
+export async function uploadEvidenceImage(file: File): Promise<EvidenceItemPayload> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await apiClient.post<{
+    success: boolean;
+    data: {
+      evidence: {
+        original_filename: string;
+        mime_type: string;
+        file_size_bytes: number;
+        storage_key: string;
+        url: string;
+      };
+    };
+  }>('/complaints/evidence/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+
+  return response.data.data.evidence;
 }

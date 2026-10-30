@@ -144,6 +144,14 @@ export interface ComplaintListResponse {
   meta: PaginationMeta;
 }
 
+export interface EvidenceItemPayload {
+  original_filename: string;
+  mime_type: string;
+  file_size_bytes: number;
+  storage_key: string;
+  url?: string;
+}
+
 export interface CreateComplaintPayload {
   title: string;
   description: string;
@@ -152,6 +160,7 @@ export interface CreateComplaintPayload {
   latitude: number;
   longitude: number;
   address_text?: string | null;
+  evidence?: EvidenceItemPayload[];
 }
 
 export interface ComplaintFilters {

@@ -218,6 +218,45 @@ export const ComplaintDetailPage: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Attached Photographic Evidence */}
+        {complaint.evidence && complaint.evidence.length > 0 && (
+          <div className="space-y-3 pt-2 border-t border-slate-100">
+            <h2 className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+              Photographic Evidence ({complaint.evidence.length})
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {complaint.evidence.map((ev) => (
+                <div key={ev.id} className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+                  {ev.download_url ? (
+                    <a
+                      href={ev.download_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block overflow-hidden rounded group bg-slate-200"
+                    >
+                      <img
+                        src={ev.download_url}
+                        alt={ev.original_filename}
+                        className="w-full h-44 object-cover rounded border border-slate-200 group-hover:scale-105 transition-transform duration-200"
+                      />
+                    </a>
+                  ) : (
+                    <div className="w-full h-44 bg-slate-100 rounded flex items-center justify-center text-slate-400 text-sm">
+                      No Preview
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <span className="truncate font-medium text-slate-700" title={ev.original_filename}>
+                      {ev.original_filename}
+                    </span>
+                    <span>{(ev.file_size_bytes / 1024).toFixed(0)} KB</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* AI Decision Support & Diagnostic Insights */}

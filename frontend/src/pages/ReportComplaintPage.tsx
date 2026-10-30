@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { createComplaint } from '../services/complaintApi.ts';
+import { createComplaint, uploadEvidenceImage } from '../services/complaintApi.ts';
 import {
   ComplaintCategory,
   DisasterType,
+  EvidenceItemPayload,
   COMPLAINT_CATEGORIES,
   DISASTER_TYPES,
 } from '../types/complaint.ts';
@@ -18,6 +19,12 @@ export const ReportComplaintPage: React.FC = () => {
   const [latitude, setLatitude] = useState<string>('');
   const [longitude, setLongitude] = useState<string>('');
   const [addressText, setAddressText] = useState('');
+
+  // Evidence Attachments State
+  const [uploadedEvidence, setUploadedEvidence] = useState<EvidenceItemPayload[]>([]);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
@@ -46,6 +53,48 @@ export const ReportComplaintPage: React.FC = () => {
       },
       { timeout: 10000, enableHighAccuracy: true }
     );
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    if (uploadedEvidence.length + files.length > 3) {
+      setUploadError('Maximum 3 evidence images can be attached per complaint.');
+      return;
+    }
+
+    setUploadError(null);
+    setIsUploadingImage(true);
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+
+        const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!validTypes.includes(file.type)) {
+          throw new Error(`File "${file.name}" has invalid format. Only JPEG, PNG, or WebP images are supported.`);
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+          throw new Error(`File "${file.name}" exceeds 5MB size limit.`);
+        }
+
+        const uploadedItem = await uploadEvidenceImage(file);
+        setUploadedEvidence((prev) => [...prev, uploadedItem]);
+      }
+    } catch (err: any) {
+      setUploadError(err?.message || 'Failed to upload image. Please try again.');
+    } finally {
+      setIsUploadingImage(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemoveEvidence = (index: number) => {
+    setUploadedEvidence((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   const validateForm = (): boolean => {
@@ -100,7 +149,7 @@ export const ReportComplaintPage: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const payload = {
+      const payload: any = {
         title: title.trim(),
         description: description.trim(),
         primary_category: primaryCategory,
@@ -110,6 +159,15 @@ export const ReportComplaintPage: React.FC = () => {
         longitude: parseFloat(longitude),
         address_text: addressText.trim() ? addressText.trim() : null,
       };
+
+      if (uploadedEvidence.length > 0) {
+        payload.evidence = uploadedEvidence.map((e) => ({
+          original_filename: e.original_filename,
+          mime_type: e.mime_type,
+          file_size_bytes: e.file_size_bytes,
+          storage_key: e.storage_key,
+        }));
+      }
 
       const created = await createComplaint(payload);
       navigate(`/complaints/${created.id}`);
@@ -356,12 +414,90 @@ export const ReportComplaintPage: React.FC = () => {
           />
         </div>
 
-        {/* Evidence Photo Notice (Sprint 4 Boundary) */}
-        <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-500 flex items-start gap-2">
-          <span className="text-base select-none">📷</span>
-          <div>
-            <span className="font-bold text-slate-700">Photo Attachments:</span> Binary photo upload pipeline is scheduled for a future update. For this release, reports are submitted with precise text, coordinates, and address data.
+        {/* Photographic Evidence Attachments */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+              6. Photographic Evidence <span className="text-slate-400 font-normal lowercase">(optional, max 3)</span>
+            </label>
+            <span className="text-[11px] text-slate-500 font-medium">
+              {uploadedEvidence.length} / 3 attached
+            </span>
           </div>
+
+          {/* Upload Area */}
+          <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 bg-slate-50/50 hover:bg-slate-50 transition-colors text-center space-y-2">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              disabled={isUploadingImage || uploadedEvidence.length >= 3}
+              className="hidden"
+              id="evidence-file-input"
+            />
+            <label
+              htmlFor="evidence-file-input"
+              className={`inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 shadow-sm cursor-pointer hover:bg-slate-100 transition-colors ${
+                isUploadingImage || uploadedEvidence.length >= 3 ? 'opacity-50 pointer-events-none' : ''
+              }`}
+            >
+              <span>📷</span>
+              <span>{isUploadingImage ? 'Uploading Image...' : 'Select or Capture Photo'}</span>
+            </label>
+            <p className="text-[11px] text-slate-400">
+              Supports JPEG, PNG, or WebP up to 5MB each.
+            </p>
+          </div>
+
+          {uploadError && (
+            <p className="text-xs text-red-600 font-medium bg-red-50 p-2.5 rounded-lg border border-red-200">
+              {uploadError}
+            </p>
+          )}
+
+          {/* Uploaded Evidence Thumbnails */}
+          {uploadedEvidence.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              {uploadedEvidence.map((ev, idx) => (
+                <div
+                  key={idx}
+                  className="relative p-2.5 bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col justify-between group"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    {ev.url ? (
+                      <img
+                        src={ev.url}
+                        alt={ev.original_filename}
+                        className="w-12 h-12 object-cover rounded border border-slate-100 flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 bg-slate-100 rounded border border-slate-200 flex items-center justify-center text-lg flex-shrink-0">
+                        🖼️
+                      </div>
+                    )}
+                    <div className="overflow-hidden text-left flex-1">
+                      <p className="text-xs font-semibold text-slate-800 truncate" title={ev.original_filename}>
+                        {ev.original_filename}
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        {(ev.file_size_bytes / 1024).toFixed(0)} KB
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveEvidence(idx)}
+                    className="text-[11px] text-red-600 hover:text-red-800 font-semibold text-right hover:underline"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Submit Button */}
