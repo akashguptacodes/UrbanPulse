@@ -4,3 +4,8 @@ pydantic>=2.6.0,<3.0.0
 pydantic-settings>=2.2.0,<3.0.0
 httpx>=0.27.0,<1.0.0
 pytest>=8.0.0,<9.0.0
+
+# Optional production ML dependencies (Pure-Python fallbacks are built-in for zero-dependency offline runtime)
+# sentence-transformers>=2.5.0
+# scikit-learn>=1.4.0
+# numpy>=1.26.0

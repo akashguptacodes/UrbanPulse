@@ -200,6 +200,22 @@ All error responses adhere to a consistent error schema:
           }
         ],
         "created_at": "2026-10-22T14:35:10.000Z"
+      },
+      "ai_assessment": {
+        "duplicate_check": {
+          "status": "completed",
+          "candidates_evaluated": 1,
+          "has_potential_duplicate": true,
+          "citizen_advisory": "A very similar report has already been submitted nearby and is being reviewed."
+        },
+        "priority_assessment": {
+          "status": "completed",
+          "severity_score": 70.0,
+          "priority_level": "HIGH",
+          "safety_override_applied": false,
+          "safety_reasons": [],
+          "explanation": "Evaluated as HIGH (score: 70.0/100) based on POTHOLES category base (20.0) with safety hazard (+35.0), public impact (+15.0)."
+        }
       }
     }
   }

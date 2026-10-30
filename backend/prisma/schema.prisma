@@ -74,9 +74,14 @@ model Complaint {
   latitude         Decimal                  @db.Decimal(10, 7)
   longitude        Decimal                  @db.Decimal(10, 7)
   address_text     String?                  @db.VarChar(255)
-  current_status   ComplaintStatus          @default(SUBMITTED)
-  created_at       DateTime                 @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime                 @updatedAt @db.Timestamptz(6)
+  current_status      ComplaintStatus          @default(SUBMITTED)
+  is_duplicate        Boolean                  @default(false)
+  parent_complaint_id String?                  @db.Uuid
+  parent_complaint    Complaint?               @relation("ComplaintDuplicates", fields: [parent_complaint_id], references: [id], onDelete: SetNull)
+  duplicates          Complaint[]              @relation("ComplaintDuplicates")
+  ai_assessment       Json?                    @default("{}")
+  created_at          DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime                 @updatedAt @db.Timestamptz(6)
 
   // Relationships
   evidence         ComplaintEvidence[]
@@ -85,6 +90,7 @@ model Complaint {
   @@index([citizen_id, created_at(sort: Desc)])
   @@index([current_status, primary_category, created_at(sort: Desc)])
   @@index([latitude, longitude])
+  @@index([parent_complaint_id])
   @@map("complaints")
 }
 

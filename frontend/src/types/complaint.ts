@@ -78,8 +78,47 @@ export interface ComplaintListItem {
   longitude: number;
   address_text: string | null;
   current_status: ComplaintStatus;
+  is_duplicate?: boolean;
+  parent_complaint_id?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface AIAssessmentInfo {
+  duplicate_check?: {
+    status: 'completed' | 'failed' | 'skipped';
+    has_potential_duplicate?: boolean;
+    candidates_evaluated?: number;
+    matches_count?: number;
+    citizen_advisory?: string;
+    top_match?: {
+      candidate_id: string;
+      combined_score: number;
+      recommendation: string;
+      distance_meters: number;
+      geo_score: number;
+      lexical_score: number;
+      semantic_score: number;
+      reason_codes: string[];
+      explanation: string;
+    } | null;
+    error?: string;
+  };
+  priority_assessment?: {
+    status: 'completed' | 'failed' | 'skipped';
+    severity_score?: number;
+    priority_level?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    safety_override_applied?: boolean;
+    safety_reasons?: string[];
+    explanation?: string;
+    detected_indicators?: Array<{
+      dimension: string;
+      matched_phrase: string;
+      severity_contribution: number;
+      is_negated: boolean;
+    }>;
+    error?: string;
+  };
 }
 
 export interface ComplaintDetail extends ComplaintListItem {
@@ -87,6 +126,10 @@ export interface ComplaintDetail extends ComplaintListItem {
   citizen_name: string;
   evidence: ComplaintEvidenceDto[];
   status_history: ComplaintStatusHistoryDto[];
+  ai_assessment?: AIAssessmentInfo;
+  is_duplicate?: boolean;
+  parent_complaint_id?: string | null;
+  duplicate_count?: number;
 }
 
 export interface PaginationMeta {

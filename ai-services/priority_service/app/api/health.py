@@ -11,4 +11,6 @@ async def health_check():
         "service": settings.SERVICE_NAME,
         "version": settings.VERSION,
         "environment": settings.ENVIRONMENT,
+        "rule_version": settings.RULES_VERSION,
+        "assessment_method": "RULE_BASED_BASELINE",
     }

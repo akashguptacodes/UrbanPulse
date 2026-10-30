@@ -1,9 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 
-export interface AppError extends Error {
-  statusCode?: number;
-  code?: string;
-  details?: unknown;
+export class AppError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number = 500,
+    public code: string = 'INTERNAL_SERVER_ERROR',
+    public details?: unknown
+  ) {
+    super(message);
+    this.name = 'AppError';
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

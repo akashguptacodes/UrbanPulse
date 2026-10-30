@@ -1,4 +1,4 @@
-import { Prisma, Complaint, ComplaintStatus } from '@prisma/client';
+import { Prisma, Complaint, ComplaintStatus, ComplaintCategory } from '@prisma/client';
 import { prisma } from './prisma.js';
 import {
   ComplaintListItemDto,
@@ -6,6 +6,8 @@ import {
   CreateComplaintInput,
 } from '../types/complaint.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { DuplicateComplaintInput } from '../services/ai/aiSchemas.js';
+import { storageService } from '../services/storageService.js';
 
 export interface ComplaintWithRelations extends Complaint {
   citizen?: { id: string; full_name: string; email: string };
@@ -25,6 +27,10 @@ export interface ComplaintWithRelations extends Complaint {
     created_at: Date;
     changed_by?: { full_name: string; email: string };
   }>;
+  ai_assessment?: any;
+  is_duplicate?: boolean;
+  parent_complaint_id?: string | null;
+  duplicate_count?: number;
 }
 
 export interface IComplaintRepository {
@@ -42,6 +48,20 @@ export interface IComplaintRepository {
     changedByUserId: string,
     reasonOrNotes?: string | null
   ): Promise<ComplaintWithRelations>;
+  updateAIAssessment(
+    complaintId: string,
+    aiAssessment: any,
+    isDuplicate: boolean,
+    parentComplaintId?: string | null
+  ): Promise<ComplaintWithRelations>;
+  findCandidatesForDuplicateCheck(
+    category: ComplaintCategory,
+    disasterType?: string | null,
+    latitude?: number,
+    longitude?: number,
+    excludeId?: string,
+    limit?: number
+  ): Promise<DuplicateComplaintInput[]>;
   toListItemDto(complaint: ComplaintWithRelations): ComplaintListItemDto;
   toDetailDto(complaint: ComplaintWithRelations): ComplaintDetailDto;
 }
@@ -108,7 +128,7 @@ export class PrismaComplaintRepository implements IComplaintRepository {
   }
 
   /**
-   * Retrieves a complaint by ID with relations.
+   * Retrieves a complaint by ID with relations and linked duplicates count.
    */
   public async findById(id: string): Promise<ComplaintWithRelations | null> {
     const complaint = await prisma.complaint.findUnique({
@@ -123,7 +143,18 @@ export class PrismaComplaintRepository implements IComplaintRepository {
       },
     });
 
-    return complaint as ComplaintWithRelations | null;
+    if (!complaint) return null;
+
+    const res = complaint as any;
+    try {
+      res.duplicate_count = await prisma.complaint.count({
+        where: { parent_complaint_id: id } as any,
+      });
+    } catch {
+      res.duplicate_count = 0;
+    }
+
+    return res as ComplaintWithRelations;
   }
 
   /**
@@ -217,6 +248,112 @@ export class PrismaComplaintRepository implements IComplaintRepository {
   }
 
   /**
+   * Persists AI duplicate & priority assessment snapshot and parent clustering links atomically.
+   */
+  public async updateAIAssessment(
+    complaintId: string,
+    aiAssessment: any,
+    isDuplicate: boolean,
+    parentComplaintId?: string | null
+  ): Promise<ComplaintWithRelations> {
+    try {
+      const updated = await prisma.complaint.update({
+        where: { id: complaintId },
+        data: {
+          ai_assessment: aiAssessment,
+          is_duplicate: isDuplicate,
+          parent_complaint_id: parentComplaintId || null,
+        } as any,
+        include: {
+          citizen: { select: { id: true, full_name: true, email: true } },
+          evidence: true,
+          status_history: {
+            orderBy: { created_at: 'asc' },
+            include: { changed_by: { select: { full_name: true, email: true } } },
+          },
+        },
+      });
+      return updated as ComplaintWithRelations;
+    } catch {
+      // Graceful fallback for non-migrated DB instances
+      const existing = await this.findById(complaintId);
+      if (existing) {
+        existing.ai_assessment = aiAssessment;
+        existing.is_duplicate = isDuplicate;
+        existing.parent_complaint_id = parentComplaintId || null;
+        return existing;
+      }
+      throw new Error(`Complaint ${complaintId} not found`);
+    }
+  }
+
+  /**
+   * Retrieves bounded, privacy-filtered candidate complaints for duplicate checking.
+   */
+  public async findCandidatesForDuplicateCheck(
+    category: ComplaintCategory,
+    disasterType?: string | null,
+    latitude?: number,
+    longitude?: number,
+    excludeId?: string,
+    limit: number = 50
+  ): Promise<DuplicateComplaintInput[]> {
+    const cappedLimit = Math.min(Math.max(1, limit), 100);
+    const where: Prisma.ComplaintWhereInput = {
+      primary_category: category,
+      current_status: {
+        notIn: [ComplaintStatus.RESOLVED, ComplaintStatus.REJECTED],
+      },
+    };
+
+    if (excludeId) {
+      where.id = { not: excludeId };
+    }
+
+    if (category === ComplaintCategory.DISASTERS && disasterType) {
+      where.disaster_type = disasterType;
+    }
+
+    // Geospatial bounding box (+/- 0.005 degrees ≈ 550m)
+    if (latitude !== undefined && longitude !== undefined) {
+      const delta = 0.005;
+      where.latitude = {
+        gte: new Prisma.Decimal(latitude - delta),
+        lte: new Prisma.Decimal(latitude + delta),
+      };
+      where.longitude = {
+        gte: new Prisma.Decimal(longitude - delta),
+        lte: new Prisma.Decimal(longitude + delta),
+      };
+    }
+
+    const rows = await prisma.complaint.findMany({
+      where,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        primary_category: true,
+        disaster_type: true,
+        latitude: true,
+        longitude: true,
+      },
+      take: cappedLimit,
+      orderBy: { created_at: 'desc' },
+    });
+
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      description: r.description,
+      category: r.primary_category as any,
+      disaster_type: (r.disaster_type as any) || null,
+      latitude: Number(r.latitude),
+      longitude: Number(r.longitude),
+    }));
+  }
+
+  /**
    * Converts a database record to a clean list DTO.
    */
   public toListItemDto(complaint: ComplaintWithRelations): ComplaintListItemDto {
@@ -230,13 +367,15 @@ export class PrismaComplaintRepository implements IComplaintRepository {
       longitude: Number(complaint.longitude),
       address_text: complaint.address_text,
       current_status: complaint.current_status,
-      created_at: complaint.created_at.toISOString(),
-      updated_at: complaint.updated_at.toISOString(),
+      is_duplicate: (complaint as any).is_duplicate ?? false,
+      parent_complaint_id: (complaint as any).parent_complaint_id ?? null,
+      created_at: new Date(complaint.created_at).toISOString(),
+      updated_at: new Date(complaint.updated_at).toISOString(),
     };
   }
 
   /**
-   * Converts a database record to a detailed DTO with evidence and history.
+   * Converts a database record to a detailed DTO with evidence, history, and AI assessment.
    */
   public toDetailDto(complaint: ComplaintWithRelations): ComplaintDetailDto {
     return {
@@ -251,15 +390,19 @@ export class PrismaComplaintRepository implements IComplaintRepository {
       longitude: Number(complaint.longitude),
       address_text: complaint.address_text,
       current_status: complaint.current_status,
-      created_at: complaint.created_at.toISOString(),
-      updated_at: complaint.updated_at.toISOString(),
+      is_duplicate: (complaint as any).is_duplicate ?? false,
+      parent_complaint_id: (complaint as any).parent_complaint_id ?? null,
+      duplicate_count: (complaint as any).duplicate_count ?? 0,
+      ai_assessment: (complaint as any).ai_assessment || undefined,
+      created_at: new Date(complaint.created_at).toISOString(),
+      updated_at: new Date(complaint.updated_at).toISOString(),
       evidence: (complaint.evidence || []).map((e) => ({
         id: e.id,
         original_filename: e.original_filename,
         mime_type: e.mime_type,
         file_size_bytes: e.file_size_bytes,
-        uploaded_at: e.uploaded_at.toISOString(),
-        download_url: `/api/v1/complaints/${complaint.id}/evidence/${e.id}`,
+        uploaded_at: new Date(e.uploaded_at).toISOString(),
+        download_url: storageService.getFileUrl(e.storage_key, complaint.id, e.id),
       })),
       status_history: (complaint.status_history || []).map((h) => ({
         id: h.id,
@@ -267,7 +410,7 @@ export class PrismaComplaintRepository implements IComplaintRepository {
         new_status: h.new_status,
         reason_or_notes: h.reason_or_notes,
         changed_by: h.changed_by?.full_name || 'System / Admin',
-        created_at: h.created_at.toISOString(),
+        created_at: new Date(h.created_at).toISOString(),
       })),
     };
   }
@@ -350,7 +493,31 @@ export class InMemoryComplaintRepository implements IComplaintRepository {
   public async findById(id: string): Promise<ComplaintWithRelations | null> {
     const found = this.complaints.get(id);
     if (!found) return null;
-    return JSON.parse(JSON.stringify(found)) as ComplaintWithRelations;
+    const cloned = JSON.parse(JSON.stringify(found)) as ComplaintWithRelations;
+    let dupCount = 0;
+    for (const c of this.complaints.values()) {
+      if (c.parent_complaint_id === id) {
+        dupCount++;
+      }
+    }
+    cloned.duplicate_count = dupCount;
+    return cloned;
+  }
+
+  public async updateAIAssessment(
+    complaintId: string,
+    aiAssessment: any,
+    isDuplicate: boolean,
+    parentComplaintId?: string | null
+  ): Promise<ComplaintWithRelations> {
+    const complaint = this.complaints.get(complaintId);
+    if (!complaint) {
+      throw new Error(`Complaint ${complaintId} not found`);
+    }
+    complaint.ai_assessment = aiAssessment;
+    complaint.is_duplicate = isDuplicate;
+    complaint.parent_complaint_id = parentComplaintId || null;
+    return JSON.parse(JSON.stringify(complaint)) as ComplaintWithRelations;
   }
 
   public async list(
@@ -476,6 +643,63 @@ export class InMemoryComplaintRepository implements IComplaintRepository {
     return JSON.parse(JSON.stringify(complaint)) as ComplaintWithRelations;
   }
 
+  public async findCandidatesForDuplicateCheck(
+    category: ComplaintCategory,
+    disasterType?: string | null,
+    latitude?: number,
+    longitude?: number,
+    excludeId?: string,
+    limit: number = 50
+  ): Promise<DuplicateComplaintInput[]> {
+    const cappedLimit = Math.min(Math.max(1, limit), 100);
+    const delta = 0.005;
+    const candidates: DuplicateComplaintInput[] = [];
+
+    for (const c of this.complaints.values()) {
+      if (excludeId && c.id === excludeId) continue;
+      if (c.primary_category !== category) continue;
+      if (
+        c.current_status === ComplaintStatus.RESOLVED ||
+        c.current_status === ComplaintStatus.REJECTED
+      ) {
+        continue;
+      }
+      if (
+        category === ComplaintCategory.DISASTERS &&
+        disasterType &&
+        c.disaster_type !== disasterType
+      ) {
+        continue;
+      }
+      if (latitude !== undefined && longitude !== undefined) {
+        const cLat = Number(c.latitude);
+        const cLng = Number(c.longitude);
+        if (
+          cLat < latitude - delta ||
+          cLat > latitude + delta ||
+          cLng < longitude - delta ||
+          cLng > longitude + delta
+        ) {
+          continue;
+        }
+      }
+
+      candidates.push({
+        id: c.id,
+        title: c.title,
+        description: c.description,
+        category: c.primary_category as any,
+        disaster_type: (c.disaster_type as any) || null,
+        latitude: Number(c.latitude),
+        longitude: Number(c.longitude),
+      });
+
+      if (candidates.length >= cappedLimit) break;
+    }
+
+    return candidates;
+  }
+
   public toListItemDto(complaint: ComplaintWithRelations): ComplaintListItemDto {
     return {
       id: complaint.id,
@@ -487,6 +711,8 @@ export class InMemoryComplaintRepository implements IComplaintRepository {
       longitude: Number(complaint.longitude),
       address_text: complaint.address_text,
       current_status: complaint.current_status,
+      is_duplicate: complaint.is_duplicate ?? false,
+      parent_complaint_id: complaint.parent_complaint_id ?? null,
       created_at: new Date(complaint.created_at).toISOString(),
       updated_at: new Date(complaint.updated_at).toISOString(),
     };
@@ -505,6 +731,10 @@ export class InMemoryComplaintRepository implements IComplaintRepository {
       longitude: Number(complaint.longitude),
       address_text: complaint.address_text,
       current_status: complaint.current_status,
+      is_duplicate: complaint.is_duplicate ?? false,
+      parent_complaint_id: complaint.parent_complaint_id ?? null,
+      duplicate_count: complaint.duplicate_count ?? 0,
+      ai_assessment: complaint.ai_assessment,
       created_at: new Date(complaint.created_at).toISOString(),
       updated_at: new Date(complaint.updated_at).toISOString(),
       evidence: (complaint.evidence || []).map((e) => ({
@@ -513,7 +743,7 @@ export class InMemoryComplaintRepository implements IComplaintRepository {
         mime_type: e.mime_type,
         file_size_bytes: e.file_size_bytes,
         uploaded_at: new Date(e.uploaded_at).toISOString(),
-        download_url: `/api/v1/complaints/${complaint.id}/evidence/${e.id}`,
+        download_url: storageService.getFileUrl(e.storage_key, complaint.id, e.id),
       })),
       status_history: (complaint.status_history || []).map((h) => ({
         id: h.id,

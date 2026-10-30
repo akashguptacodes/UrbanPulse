@@ -18,6 +18,19 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   DUPLICATE_SERVICE_URL: z.string().url().default('http://localhost:8001'),
   PRIORITY_SERVICE_URL: z.string().url().default('http://localhost:8002'),
+  AI_REQUEST_TIMEOUT_MS: z
+    .preprocess((val) => val ?? process.env.AI_REQUEST_TIMEOUT_MS, z.string().default('3000'))
+    .transform((val) => parseInt(String(val), 10))
+    .refine((val) => !isNaN(val) && val > 0, {
+      message: 'AI_REQUEST_TIMEOUT_MS must be a positive number',
+    }),
+  AI_INTEGRATION_ENABLED: z
+    .preprocess((val) => {
+      if (val === undefined || val === '') return true;
+      if (val === 'false' || val === false) return false;
+      return true;
+    }, z.boolean())
+    .default(true),
   DATABASE_URL: z
     .string()
     .default('postgresql://postgres:postgres@localhost:5432/urbanpulse?schema=public'),
@@ -26,6 +39,11 @@ const envSchema = z.object({
     .min(16, { message: 'JWT_SECRET must be at least 16 characters' })
     .default('development-jwt-secret-min-32-characters-long-key'),
   JWT_EXPIRES_IN: z.string().default('7d'),
+  // Storage Provider
+  STORAGE_PROVIDER: z.enum(['local', 'cloudinary']).default('local'),
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

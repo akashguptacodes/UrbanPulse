@@ -13,12 +13,18 @@ import { AuthenticatedUser } from '../types/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { validateStatusTransition } from './statusTransitionPolicy.js';
 import { ListComplaintsQuery } from '../validators/complaintValidators.js';
+import { aiOrchestrator, AIOrchestrator } from './ai/aiOrchestrator.js';
+import { DuplicateComplaintInput } from './ai/aiSchemas.js';
 
 export class ComplaintService {
-  constructor(private repo: IComplaintRepository = complaintRepository) {}
+  constructor(
+    private repo: IComplaintRepository = complaintRepository,
+    private orchestrator: AIOrchestrator = aiOrchestrator
+  ) {}
 
   /**
    * Submits a new civic complaint with initial SUBMITTED status and creates initial status history.
+   * Runs resilient AI duplicate detection and priority assessment.
    */
   public async createComplaint(
     currentUser: AuthenticatedUser,
@@ -27,8 +33,85 @@ export class ComplaintService {
     // Creator is always strictly bound to verified authenticated user
     const citizenId = currentUser.id;
 
+    // 1. Retrieve candidate complaints for duplicate checking (privacy-safe, bounded)
+    let candidates: DuplicateComplaintInput[] = [];
+    try {
+      candidates = await this.repo.findCandidatesForDuplicateCheck(
+        input.primary_category,
+        input.disaster_type ?? null,
+        input.latitude,
+        input.longitude,
+        undefined,
+        50
+      );
+    } catch (err: any) {
+      console.warn('Failed to retrieve candidates for duplicate check:', err?.message);
+    }
+
+    // 2. Persist complaint and initial status history atomically in transaction
     const createdRecord = await this.repo.create(citizenId, input);
-    return this.repo.toDetailDto(createdRecord);
+    const complaintDto = this.repo.toDetailDto(createdRecord);
+
+    // 3. Run AI Orchestration (resilient, non-blocking failure)
+    let assessmentResult: any;
+    let isDuplicate = false;
+    let parentComplaintId: string | null = null;
+
+    try {
+      assessmentResult = await this.orchestrator.assessComplaint(
+        {
+          id: complaintDto.id,
+          title: complaintDto.title,
+          description: complaintDto.description,
+          category: complaintDto.primary_category,
+          disasterType: complaintDto.disaster_type as any,
+          latitude: complaintDto.latitude,
+          longitude: complaintDto.longitude,
+        },
+        candidates,
+        currentUser.role
+      );
+
+      // Determine parent-child clustering:
+      // If a match is found among prior candidates, tag as DUPLICATE pointing to parent.
+      // If no match is found, this complaint remains the ORIGINAL (Root / Parent) complaint.
+      if (
+        assessmentResult.duplicate_check?.has_potential_duplicate &&
+        assessmentResult.duplicate_check?.parent_candidate_id
+      ) {
+        isDuplicate = true;
+        parentComplaintId = assessmentResult.duplicate_check.parent_candidate_id;
+      }
+    } catch (err: any) {
+      assessmentResult = {
+        duplicate_check: {
+          status: 'failed',
+          error: err?.message || 'Duplicate check execution failed',
+          citizen_advisory: 'Duplicate verification temporarily unavailable.',
+        },
+        priority_assessment: {
+          status: 'failed',
+          error: err?.message || 'Priority assessment execution failed',
+          explanation: 'Priority assessment temporarily unavailable; queued for manual review.',
+        },
+      };
+    }
+
+    // 4. Persist AI assessment and parent clustering in DB so read operations NEVER call AI services again
+    try {
+      const persistedRecord = await this.repo.updateAIAssessment(
+        complaintDto.id,
+        assessmentResult,
+        isDuplicate,
+        parentComplaintId
+      );
+      return this.repo.toDetailDto(persistedRecord);
+    } catch (persistErr: any) {
+      complaintDto.ai_assessment = assessmentResult;
+      complaintDto.is_duplicate = isDuplicate;
+      complaintDto.parent_complaint_id = parentComplaintId;
+      return complaintDto;
+    }
   }
 
   /**
@@ -125,7 +208,61 @@ export class ComplaintService {
       throw error;
     }
 
-    return this.repo.toDetailDto(complaint);
+    const detailDto = this.repo.toDetailDto(complaint);
+
+    // High-performance optimization: If complaint already has persisted AI assessment, return immediately!
+    // ZERO AI calls on read operations. Eliminates DB read bottleneck and preserves chronological causality.
+    if (detailDto.ai_assessment && detailDto.ai_assessment.duplicate_check?.status) {
+      return detailDto;
+    }
+
+    // Fallback: only evaluate dynamically for legacy complaints submitted before Sprint 7
+    try {
+      const candidates = await this.repo.findCandidatesForDuplicateCheck(
+        detailDto.primary_category,
+        detailDto.disaster_type,
+        detailDto.latitude,
+        detailDto.longitude,
+        detailDto.id,
+        50
+      );
+
+      detailDto.ai_assessment = await this.orchestrator.assessComplaint(
+        {
+          id: detailDto.id,
+          title: detailDto.title,
+          description: detailDto.description,
+          category: detailDto.primary_category,
+          disasterType: detailDto.disaster_type as any,
+          latitude: detailDto.latitude,
+          longitude: detailDto.longitude,
+        },
+        candidates,
+        currentUser.role
+      );
+
+      // Persist so future reads never re-evaluate
+      const isDup = !!detailDto.ai_assessment?.duplicate_check?.has_potential_duplicate && !!detailDto.ai_assessment?.duplicate_check?.parent_candidate_id;
+      const parentId = isDup ? (detailDto.ai_assessment?.duplicate_check?.parent_candidate_id || null) : null;
+      detailDto.is_duplicate = isDup;
+      detailDto.parent_complaint_id = parentId;
+      await this.repo.updateAIAssessment(detailDto.id, detailDto.ai_assessment, isDup, parentId).catch(() => {});
+    } catch (err: any) {
+      detailDto.ai_assessment = {
+        duplicate_check: {
+          status: 'failed',
+          error: err?.message || 'Duplicate check execution failed',
+          citizen_advisory: 'Duplicate verification temporarily unavailable.',
+        },
+        priority_assessment: {
+          status: 'failed',
+          error: err?.message || 'Priority assessment execution failed',
+          explanation: 'Priority assessment temporarily unavailable; queued for manual review.',
+        },
+      };
+    }
+
+    return detailDto;
   }
 
   /**

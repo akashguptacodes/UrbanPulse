@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { complaintService, ComplaintService } from '../services/complaintService.js';
+import { storageService, IStorageService } from '../services/storageService.js';
+import { AppError } from '../middleware/errorHandler.js';
 import {
   createComplaintSchema,
   listComplaintsQuerySchema,
@@ -8,7 +10,10 @@ import {
 } from '../validators/complaintValidators.js';
 
 export class ComplaintController {
-  constructor(private service: ComplaintService = complaintService) {}
+  constructor(
+    private service: ComplaintService = complaintService,
+    private storage: IStorageService = storageService
+  ) {}
 
   /**
    * POST /api/complaints
@@ -49,6 +54,7 @@ export class ComplaintController {
         success: true,
         data: {
           complaint: createdComplaint,
+          ai_assessment: createdComplaint.ai_assessment,
         },
       });
     } catch (error) {
@@ -209,6 +215,78 @@ export class ComplaintController {
         success: true,
         data: result,
       });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * POST /api/complaints/evidence/upload
+   * Uploads an evidence image file (JPEG, PNG, WebP) to storage (Cloudinary or local)
+   */
+  public uploadEvidence = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user) {
+        throw new AppError('Authentication required to upload evidence', 401, 'UNAUTHORIZED');
+      }
+
+      if (!req.file) {
+        throw new AppError('No evidence image file uploaded', 400, 'NO_FILE_UPLOADED');
+      }
+
+      const storageKey = await this.storage.saveFile(
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype
+      );
+
+      const fileUrl = this.storage.getFileUrl(storageKey);
+
+      res.status(201).json({
+        success: true,
+        data: {
+          evidence: {
+            original_filename: req.file.originalname,
+            mime_type: req.file.mimetype,
+            file_size_bytes: req.file.size,
+            storage_key: storageKey,
+            url: fileUrl,
+          },
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * GET /api/complaints/:id/evidence/:evidenceId
+   * Streams or redirects to complaint evidence image with access control verification
+   */
+  public getEvidence = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user) {
+        throw new AppError('Authentication required to access evidence', 401, 'UNAUTHORIZED');
+      }
+
+      const { id: complaintId, evidenceId } = req.params;
+      const complaint = await this.service.getComplaintById(req.user, complaintId);
+
+      const evidence = complaint.evidence.find((e) => e.id === evidenceId);
+      if (!evidence) {
+        throw new AppError('Evidence record not found', 404, 'EVIDENCE_NOT_FOUND');
+      }
+
+      const fileUrl = this.storage.getFileUrl(evidence.original_filename);
+      if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+        res.redirect(fileUrl);
+        return;
+      }
+
+      // Stream local buffer
+      const buffer = await this.storage.getFileBuffer(evidence.original_filename);
+      res.setHeader('Content-Type', evidence.mime_type);
+      res.send(buffer);
     } catch (error) {
       next(error);
     }

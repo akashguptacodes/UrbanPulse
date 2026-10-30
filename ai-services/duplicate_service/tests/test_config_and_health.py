@@ -19,3 +19,4 @@ def test_health_endpoint():
     assert data["service"] == "duplicate_service"
     assert data["version"] == settings.VERSION
     assert data["environment"] == settings.ENVIRONMENT
+    assert data["model"] == settings.EMBEDDING_MODEL_NAME

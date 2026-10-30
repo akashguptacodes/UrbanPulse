@@ -19,3 +19,5 @@ def test_health_endpoint():
     assert data["service"] == "priority_service"
     assert data["version"] == settings.VERSION
     assert data["environment"] == settings.ENVIRONMENT
+    assert data["rule_version"] == settings.RULES_VERSION
+    assert data["assessment_method"] == "RULE_BASED_BASELINE"

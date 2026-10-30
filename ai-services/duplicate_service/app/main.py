@@ -3,6 +3,7 @@ import uvicorn
 
 from app.core.config import settings
 from app.api.health import router as health_router
+from app.api.duplicates import router as duplicates_router
 
 app = FastAPI(
     title="UrbanPulse Duplicate Detection Service",
@@ -10,8 +11,9 @@ app = FastAPI(
     version=settings.VERSION,
 )
 
-# Mount health routes
+# Mount routes
 app.include_router(health_router)
+app.include_router(duplicates_router)
 
 
 if __name__ == "__main__":

@@ -11,4 +11,5 @@ async def health_check():
         "service": settings.SERVICE_NAME,
         "version": settings.VERSION,
         "environment": settings.ENVIRONMENT,
+        "model": settings.EMBEDDING_MODEL_NAME,
     }

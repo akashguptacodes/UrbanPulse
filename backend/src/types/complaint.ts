@@ -1,4 +1,5 @@
 import { ComplaintCategory, ComplaintStatus } from '@prisma/client';
+import type { AIOrchestrationResult } from '../services/ai/aiSchemas.js';
 
 export { ComplaintCategory, ComplaintStatus };
 
@@ -42,6 +43,8 @@ export interface ComplaintListItemDto {
   longitude: number;
   address_text: string | null;
   current_status: ComplaintStatus;
+  is_duplicate?: boolean;
+  parent_complaint_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -51,6 +54,10 @@ export interface ComplaintDetailDto extends ComplaintListItemDto {
   citizen_name: string;
   evidence: ComplaintEvidenceDto[];
   status_history: ComplaintStatusHistoryDto[];
+  ai_assessment?: AIOrchestrationResult;
+  is_duplicate?: boolean;
+  parent_complaint_id?: string | null;
+  duplicate_count?: number;
 }
 
 export interface ComplaintPaginationMeta {
