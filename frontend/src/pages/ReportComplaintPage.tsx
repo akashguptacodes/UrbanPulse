@@ -8,6 +8,18 @@ import {
   COMPLAINT_CATEGORIES,
   DISASTER_TYPES,
 } from '../types/complaint.ts';
+import { CIVIC_VISUALS } from '../constants/visuals.ts';
+import {
+  ArrowLeft,
+  Navigation,
+  UploadCloud,
+  AlertCircle,
+  AlertTriangle,
+  Camera,
+  Trash2,
+  FileText,
+  Sparkles,
+} from 'lucide-react';
 
 export const ReportComplaintPage: React.FC = () => {
   const navigate = useNavigate();
@@ -161,11 +173,11 @@ export const ReportComplaintPage: React.FC = () => {
       };
 
       if (uploadedEvidence.length > 0) {
-        payload.evidence = uploadedEvidence.map((e) => ({
-          original_filename: e.original_filename,
-          mime_type: e.mime_type,
-          file_size_bytes: e.file_size_bytes,
-          storage_key: e.storage_key,
+        payload.evidence = uploadedEvidence.map((ev) => ({
+          original_filename: ev.original_filename,
+          mime_type: ev.mime_type,
+          file_size_bytes: ev.file_size_bytes,
+          storage_key: ev.storage_key,
         }));
       }
 
@@ -191,75 +203,111 @@ export const ReportComplaintPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6 pb-12">
       {/* Header */}
-      <div className="pb-4 border-b border-slate-200">
-        <Link to="/complaints" className="text-xs font-semibold text-sky-600 hover:underline mb-2 inline-block">
-          ← Back to Complaints Queue
+      <div className="space-y-2.5 pb-5 border-b border-civic-border">
+        <Link
+          to="/complaints"
+          className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-800 transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>← Back to Complaints Queue</span>
         </Link>
-        <h1 className="text-2xl font-bold text-slate-900">Report a Civic Issue</h1>
-        <p className="text-xs text-slate-500 mt-1">
-          Provide accurate details and location coordinates to dispatch city maintenance.
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-forest-950 tracking-tight">
+              Report a Civic Issue
+            </h1>
+            <p className="text-xs sm:text-sm text-civic-muted mt-1">
+              Provide accurate details and location coordinates to dispatch city maintenance.
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold bg-forest-50 text-forest-800 border border-forest-100 self-start sm:self-auto">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+            <span>AI Geocoded Triage</span>
+          </div>
+        </div>
       </div>
 
       {generalError && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs font-medium">
-          {generalError}
+        <div className="p-3.5 bg-red-50 border border-red-200 rounded-md text-red-800 text-xs sm:text-sm font-medium flex items-start gap-2.5 shadow-2xs">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <div className="leading-snug">{generalError}</div>
         </div>
       )}
 
-      {/* Form */}
-      <form onSubmit={handleSubmit} className="bg-white p-6 sm:p-8 rounded-xl border border-slate-200 shadow-sm space-y-5">
+      {/* Form Card */}
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white p-5 sm:p-8 rounded-lg border border-civic-border shadow-xs space-y-6"
+      >
         {/* Category Selection */}
-        <div>
-          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-            1. Issue Category <span className="text-red-500">*</span>
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {COMPLAINT_CATEGORIES.map((c) => (
-              <label
-                key={c.key}
-                className={`p-3 rounded-lg border text-left cursor-pointer transition-all flex flex-col justify-between ${
-                  primaryCategory === c.key
-                    ? 'border-sky-600 bg-sky-50/50 ring-1 ring-sky-600'
-                    : 'border-slate-200 hover:border-slate-300 bg-white'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-bold text-xs text-slate-900">{c.label}</span>
-                  <input
-                    type="radio"
-                    name="primary_category"
-                    value={c.key}
-                    checked={primaryCategory === c.key}
-                    onChange={() => setPrimaryCategory(c.key)}
-                    className="text-sky-600 focus:ring-sky-500"
-                  />
-                </div>
-                <span className="text-[11px] text-slate-500 leading-snug">{c.description}</span>
-              </label>
-            ))}
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-bold text-forest-950 uppercase tracking-wider">
+              1. Issue Category <span className="text-red-500">*</span>
+            </label>
+            <span className="text-[11px] text-civic-muted">Select domain</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {COMPLAINT_CATEGORIES.map((c) => {
+              const visual = CIVIC_VISUALS.categories[c.key];
+              const isSelected = primaryCategory === c.key;
+
+              return (
+                <label
+                  key={c.key}
+                  className={`relative p-3 rounded-md border text-left cursor-pointer transition-all duration-150 flex flex-col justify-between overflow-hidden group ${
+                    isSelected
+                      ? 'border-forest-900 bg-forest-50/70 ring-1 ring-forest-900 shadow-2xs'
+                      : 'border-civic-border hover:border-forest-300 bg-white hover:bg-forest-50/20'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3 mb-1.5">
+                    <div className="space-y-0.5">
+                      <span className="font-display font-bold text-xs sm:text-sm text-forest-950 block group-hover:text-emerald-700 transition-colors">
+                        {c.label}
+                      </span>
+                      <span className="text-[10px] font-mono text-civic-muted uppercase">{visual.badge}</span>
+                    </div>
+
+                    <input
+                      type="radio"
+                      name="primary_category"
+                      value={c.key}
+                      checked={isSelected}
+                      onChange={() => setPrimaryCategory(c.key)}
+                      className="mt-0.5 text-forest-900 focus:ring-forest-700"
+                    />
+                  </div>
+                  <p className="text-[11px] text-civic-muted leading-relaxed line-clamp-2">{c.description}</p>
+                </label>
+              );
+            })}
           </div>
         </div>
 
         {/* Conditional Disaster Subtype Field */}
         {primaryCategory === 'DISASTERS' && (
-          <div className="p-4 bg-rose-50 border border-rose-200 rounded-lg space-y-2">
-            <label className="block text-xs font-bold text-rose-800 uppercase tracking-wider">
-              Disaster Emergency Subtype <span className="text-red-500">*</span>
-            </label>
-            <p className="text-[11px] text-rose-600">
+          <div className="p-4 bg-red-50/70 border border-red-200 rounded-md space-y-2.5 animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+              <label className="block text-xs font-bold text-red-900 uppercase tracking-wider">
+                Disaster Emergency Subtype <span className="text-red-500">*</span>
+              </label>
+            </div>
+            <p className="text-[11px] text-red-700 leading-relaxed">
               Emergency reports must categorize the threat to alert priority response units.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
               {DISASTER_TYPES.map((dt) => (
                 <label
                   key={dt.key}
-                  className={`p-2.5 rounded-md border text-center cursor-pointer transition-colors text-xs font-semibold ${
+                  className={`p-2.5 rounded border text-center cursor-pointer transition-all text-xs font-semibold ${
                     disasterType === dt.key
-                      ? 'border-rose-600 bg-rose-100/70 text-rose-900 font-bold'
-                      : 'border-rose-200 bg-white text-rose-700 hover:bg-rose-50'
+                      ? 'border-red-600 bg-white text-red-900 font-bold shadow-2xs ring-1 ring-red-600'
+                      : 'border-red-200 bg-white/70 text-red-700 hover:bg-white'
                   }`}
                 >
                   <input
@@ -270,7 +318,7 @@ export const ReportComplaintPage: React.FC = () => {
                     onChange={() => setDisasterType(dt.key)}
                     className="sr-only"
                   />
-                  {dt.label}
+                  <span>{dt.label}</span>
                 </label>
               ))}
             </div>
@@ -281,8 +329,8 @@ export const ReportComplaintPage: React.FC = () => {
         )}
 
         {/* Complaint Title */}
-        <div>
-          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+        <div className="space-y-1">
+          <label className="block text-xs font-bold text-forest-950 uppercase tracking-wider">
             2. Title <span className="text-red-500">*</span>
           </label>
           <input
@@ -292,21 +340,23 @@ export const ReportComplaintPage: React.FC = () => {
             placeholder="e.g. Deep pothole on right lane near crosswalk"
             maxLength={150}
             required
-            className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
+            className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-hidden focus:ring-1 transition-all shadow-2xs ${
               errors.title
-                ? 'border-red-300 focus:ring-red-500'
-                : 'border-slate-300 focus:ring-sky-500'
+                ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                : 'border-civic-border focus:ring-forest-700 focus:border-forest-700'
             }`}
           />
-          <div className="flex justify-between items-center text-[11px] text-slate-400 mt-1">
-            <span>{errors.title ? <span className="text-red-600 font-semibold">{errors.title}</span> : '5–150 characters'}</span>
+          <div className="flex justify-between items-center text-[11px] text-civic-muted mt-1 px-1">
+            <span>
+              {errors.title ? <span className="text-red-600 font-semibold">{errors.title}</span> : '5–150 characters'}
+            </span>
             <span>{title.length}/150</span>
           </div>
         </div>
 
         {/* Complaint Description */}
-        <div>
-          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+        <div className="space-y-1">
+          <label className="block text-xs font-bold text-forest-950 uppercase tracking-wider">
             3. Detailed Description <span className="text-red-500">*</span>
           </label>
           <textarea
@@ -316,13 +366,13 @@ export const ReportComplaintPage: React.FC = () => {
             placeholder="Describe the issue, dimensions, hazards to traffic or pedestrians, and any immediate risks..."
             maxLength={2000}
             required
-            className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
+            className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-hidden focus:ring-1 transition-all shadow-2xs ${
               errors.description
-                ? 'border-red-300 focus:ring-red-500'
-                : 'border-slate-300 focus:ring-sky-500'
+                ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                : 'border-civic-border focus:ring-forest-700 focus:border-forest-700'
             }`}
           />
-          <div className="flex justify-between items-center text-[11px] text-slate-400 mt-1">
+          <div className="flex justify-between items-center text-[11px] text-civic-muted mt-1 px-1">
             <span>
               {errors.description ? (
                 <span className="text-red-600 font-semibold">{errors.description}</span>
@@ -335,13 +385,13 @@ export const ReportComplaintPage: React.FC = () => {
         </div>
 
         {/* Coordinates Section */}
-        <div className="space-y-3 pt-2 border-t border-slate-100">
+        <div className="space-y-3 pt-3 border-t border-civic-border">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+              <label className="block text-xs font-bold text-forest-950 uppercase tracking-wider">
                 4. Location Coordinates <span className="text-red-500">*</span>
               </label>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-civic-muted">
                 Decimal coordinates (-90 to +90 lat, -180 to +180 lng).
               </p>
             </div>
@@ -350,15 +400,16 @@ export const ReportComplaintPage: React.FC = () => {
               type="button"
               onClick={handleDetectLocation}
               disabled={isDetectingLocation}
-              className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded transition-colors disabled:opacity-50 whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-forest-50 hover:bg-forest-100 text-forest-900 border border-forest-200 rounded-md transition-all disabled:opacity-50 shadow-2xs"
             >
-              {isDetectingLocation ? 'Detecting Location...' : '📍 Detect My Current Location'}
+              <Navigation className="w-3.5 h-3.5 text-emerald-700" />
+              <span>{isDetectingLocation ? 'Detecting Location...' : '📍 Detect My Current Location'}</span>
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              <label className="block text-[11px] font-semibold text-civic-heading mb-1">
                 Latitude (e.g. 37.774929)
               </label>
               <input
@@ -368,17 +419,17 @@ export const ReportComplaintPage: React.FC = () => {
                 onChange={(e) => setLatitude(e.target.value)}
                 placeholder="37.7749"
                 required
-                className={`w-full px-3 py-1.5 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
+                className={`w-full px-3 py-1.5 border rounded-md text-sm focus:outline-hidden focus:ring-1 shadow-2xs ${
                   errors.latitude
-                    ? 'border-red-300 focus:ring-red-500'
-                    : 'border-slate-300 focus:ring-sky-500'
+                    ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                    : 'border-civic-border focus:ring-forest-700 focus:border-forest-700'
                 }`}
               />
               {errors.latitude && <p className="text-[11px] text-red-600 mt-1 font-semibold">{errors.latitude}</p>}
             </div>
 
             <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+              <label className="block text-[11px] font-semibold text-civic-heading mb-1">
                 Longitude (e.g. -122.419416)
               </label>
               <input
@@ -388,10 +439,10 @@ export const ReportComplaintPage: React.FC = () => {
                 onChange={(e) => setLongitude(e.target.value)}
                 placeholder="-122.4194"
                 required
-                className={`w-full px-3 py-1.5 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
+                className={`w-full px-3 py-1.5 border rounded-md text-sm focus:outline-hidden focus:ring-1 shadow-2xs ${
                   errors.longitude
-                    ? 'border-red-300 focus:ring-red-500'
-                    : 'border-slate-300 focus:ring-sky-500'
+                    ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
+                    : 'border-civic-border focus:ring-forest-700 focus:border-forest-700'
                 }`}
               />
               {errors.longitude && <p className="text-[11px] text-red-600 mt-1 font-semibold">{errors.longitude}</p>}
@@ -400,9 +451,9 @@ export const ReportComplaintPage: React.FC = () => {
         </div>
 
         {/* Address or Landmark */}
-        <div>
-          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-            5. Landmark or Street Address <span className="text-slate-400 font-normal lowercase">(optional)</span>
+        <div className="space-y-1">
+          <label className="block text-xs font-bold text-forest-950 uppercase tracking-wider">
+            5. Landmark or Street Address <span className="text-civic-muted font-normal lowercase">(optional)</span>
           </label>
           <input
             type="text"
@@ -410,23 +461,23 @@ export const ReportComplaintPage: React.FC = () => {
             onChange={(e) => setAddressText(e.target.value)}
             placeholder="e.g. In front of Central Library at 5th and Main"
             maxLength={255}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            className="w-full px-3 py-2 border border-civic-border rounded-md text-sm focus:outline-hidden focus:ring-1 focus:ring-forest-700 focus:border-forest-700 shadow-2xs"
           />
         </div>
 
         {/* Photographic Evidence Attachments */}
-        <div className="space-y-3">
+        <div className="space-y-2.5 pt-2 border-t border-civic-border">
           <div className="flex items-center justify-between">
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-              6. Photographic Evidence <span className="text-slate-400 font-normal lowercase">(optional, max 3)</span>
+            <label className="block text-xs font-bold text-forest-950 uppercase tracking-wider">
+              6. Photographic Evidence <span className="text-civic-muted font-normal lowercase">(optional, max 3)</span>
             </label>
-            <span className="text-[11px] text-slate-500 font-medium">
+            <span className="text-[11px] text-civic-muted font-semibold bg-forest-50 px-2 py-0.5 rounded border border-forest-100">
               {uploadedEvidence.length} / 3 attached
             </span>
           </div>
 
-          {/* Upload Area */}
-          <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 bg-slate-50/50 hover:bg-slate-50 transition-colors text-center space-y-2">
+          {/* Upload Drop Area */}
+          <div className="border-2 border-dashed border-civic-border hover:border-forest-400 rounded-lg p-5 bg-forest-50/20 hover:bg-forest-50/40 transition-all text-center space-y-2.5">
             <input
               type="file"
               ref={fileInputRef}
@@ -437,24 +488,31 @@ export const ReportComplaintPage: React.FC = () => {
               className="hidden"
               id="evidence-file-input"
             />
-            <label
-              htmlFor="evidence-file-input"
-              className={`inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 shadow-sm cursor-pointer hover:bg-slate-100 transition-colors ${
-                isUploadingImage || uploadedEvidence.length >= 3 ? 'opacity-50 pointer-events-none' : ''
-              }`}
-            >
-              <span>📷</span>
-              <span>{isUploadingImage ? 'Uploading Image...' : 'Select or Capture Photo'}</span>
-            </label>
-            <p className="text-[11px] text-slate-400">
+            <div className="w-10 h-10 rounded-md bg-white border border-civic-border flex items-center justify-center mx-auto text-emerald-700 shadow-2xs">
+              <Camera className="w-5 h-5" />
+            </div>
+
+            <div>
+              <label
+                htmlFor="evidence-file-input"
+                className={`inline-flex items-center gap-1.5 px-4 py-2 bg-forest-900 hover:bg-forest-800 text-white rounded-md text-xs font-bold tracking-tight shadow-sm cursor-pointer transition-all active:scale-95 ${
+                  isUploadingImage || uploadedEvidence.length >= 3 ? 'opacity-50 pointer-events-none' : ''
+                }`}
+              >
+                <UploadCloud className="w-4 h-4 text-lime-400" />
+                <span>{isUploadingImage ? 'Uploading Image...' : 'Select or Capture Photo'}</span>
+              </label>
+            </div>
+            <p className="text-[11px] text-civic-muted">
               Supports JPEG, PNG, or WebP up to 5MB each.
             </p>
           </div>
 
           {uploadError && (
-            <p className="text-xs text-red-600 font-medium bg-red-50 p-2.5 rounded-lg border border-red-200">
-              {uploadError}
-            </p>
+            <div className="text-xs text-red-700 font-medium bg-red-50 p-2.5 rounded-md border border-red-200 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              <span>{uploadError}</span>
+            </div>
           )}
 
           {/* Uploaded Evidence Thumbnails */}
@@ -463,25 +521,25 @@ export const ReportComplaintPage: React.FC = () => {
               {uploadedEvidence.map((ev, idx) => (
                 <div
                   key={idx}
-                  className="relative p-2.5 bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col justify-between group"
+                  className="relative p-2.5 bg-white border border-civic-border rounded-md shadow-2xs flex flex-col justify-between group hover:border-forest-300 transition-all"
                 >
                   <div className="flex items-center gap-2 mb-2">
                     {ev.url ? (
                       <img
                         src={ev.url}
                         alt={ev.original_filename}
-                        className="w-12 h-12 object-cover rounded border border-slate-100 flex-shrink-0"
+                        className="w-10 h-10 object-cover rounded border border-civic-border shrink-0"
                       />
                     ) : (
-                      <div className="w-12 h-12 bg-slate-100 rounded border border-slate-200 flex items-center justify-center text-lg flex-shrink-0">
-                        🖼️
+                      <div className="w-10 h-10 bg-forest-50 rounded border border-forest-100 flex items-center justify-center text-forest-800 shrink-0">
+                        <FileText className="w-4 h-4 opacity-70" />
                       </div>
                     )}
-                    <div className="overflow-hidden text-left flex-1">
-                      <p className="text-xs font-semibold text-slate-800 truncate" title={ev.original_filename}>
+                    <div className="overflow-hidden text-left flex-1 min-w-0">
+                      <p className="text-xs font-bold text-forest-950 truncate" title={ev.original_filename}>
                         {ev.original_filename}
                       </p>
-                      <p className="text-[10px] text-slate-400">
+                      <p className="text-[10px] text-civic-muted">
                         {(ev.file_size_bytes / 1024).toFixed(0)} KB
                       </p>
                     </div>
@@ -490,9 +548,10 @@ export const ReportComplaintPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleRemoveEvidence(idx)}
-                    className="text-[11px] text-red-600 hover:text-red-800 font-semibold text-right hover:underline"
+                    className="inline-flex items-center justify-end gap-1 text-[11px] text-red-600 hover:text-red-800 font-semibold hover:underline self-end"
                   >
-                    Remove
+                    <Trash2 className="w-3 h-3" />
+                    <span>Remove</span>
                   </button>
                 </div>
               ))}
@@ -500,11 +559,11 @@ export const ReportComplaintPage: React.FC = () => {
           )}
         </div>
 
-        {/* Submit Button */}
-        <div className="pt-2 flex items-center justify-end gap-3">
+        {/* Submit & Cancel Buttons */}
+        <div className="pt-3 flex items-center justify-end gap-3 border-t border-civic-border">
           <Link
             to="/complaints"
-            className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-lg transition-colors"
+            className="px-4 py-2 border border-civic-border text-civic-muted hover:text-forest-950 hover:bg-forest-50/50 text-xs font-semibold rounded-md transition-all"
           >
             Cancel
           </Link>
@@ -512,7 +571,7 @@ export const ReportComplaintPage: React.FC = () => {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="px-6 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-sm transition-colors disabled:opacity-50"
+            className="px-5 py-2 bg-forest-900 hover:bg-forest-800 text-white text-xs font-bold uppercase tracking-wider rounded-md shadow-sm transition-all disabled:opacity-50 active:scale-98"
           >
             {isSubmitting ? 'Submitting Report...' : 'Submit Complaint'}
           </button>

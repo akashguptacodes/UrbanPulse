@@ -1,5 +1,6 @@
 import React from 'react';
 import { PaginationMeta } from '../types/complaint.ts';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface PaginationProps {
   meta: PaginationMeta;
@@ -18,24 +19,25 @@ export const Pagination: React.FC<PaginationProps> = ({ meta, onPageChange, disa
   const endItem = Math.min(page * limit, total);
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-3 border-t border-slate-200 text-xs text-slate-600">
-      <div>
-        Showing <span className="font-semibold text-slate-900">{startItem}</span> to{' '}
-        <span className="font-semibold text-slate-900">{endItem}</span> of{' '}
-        <span className="font-semibold text-slate-900">{total}</span> results
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4 px-2 border-t border-civic-border text-xs text-civic-muted">
+      <div className="font-medium">
+        Showing <span className="font-semibold text-civic-heading">{startItem}</span> to{' '}
+        <span className="font-semibold text-civic-heading">{endItem}</span> of{' '}
+        <span className="font-semibold text-civic-heading">{total}</span> results
       </div>
 
-      <div className="flex items-center space-x-1">
+      <div className="flex items-center space-x-2">
         <button
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1 || disabled}
           aria-label="Previous Page"
-          className="px-2.5 py-1.5 rounded border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-civic-border bg-white hover:bg-forest-50/50 hover:border-forest-200 text-civic-heading disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-all shadow-2xs active:scale-95"
         >
-          Previous
+          <ChevronLeft className="w-3.5 h-3.5 text-civic-muted" />
+          <span>Previous</span>
         </button>
 
-        <span className="px-3 py-1 font-medium text-slate-700">
+        <span className="px-3 py-1.5 font-semibold text-civic-heading bg-forest-50/70 border border-forest-100 rounded-md">
           Page {page} of {Math.max(totalPages, 1)}
         </span>
 
@@ -43,9 +45,10 @@ export const Pagination: React.FC<PaginationProps> = ({ meta, onPageChange, disa
           onClick={() => onPageChange(page + 1)}
           disabled={page >= totalPages || disabled}
           aria-label="Next Page"
-          className="px-2.5 py-1.5 rounded border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-civic-border bg-white hover:bg-forest-50/50 hover:border-forest-200 text-civic-heading disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-all shadow-2xs active:scale-95"
         >
-          Next
+          <span>Next</span>
+          <ChevronRight className="w-3.5 h-3.5 text-civic-muted" />
         </button>
       </div>
     </div>
