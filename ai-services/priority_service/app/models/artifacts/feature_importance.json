@@ -1,0 +1,17 @@
+{
+  "safety_cue_count": 10332.328125,
+  "dis_fire": 8487.63671875,
+  "damage_cue_count": 8300.2568359375,
+  "cat_disasters": 1817.0946044921875,
+  "cat_street_lights": 1637.1766357421875,
+  "char_length": 1362.2349853515625,
+  "cat_garbage": 1072.4415283203125,
+  "urgency_cue_count": 1018.2950439453125,
+  "impact_cue_count": 881.2364501953125,
+  "has_digits": 803.7969360351562,
+  "dis_other": 702.0062866210938,
+  "cat_potholes": 699.7291870117188,
+  "word_count": 680.55615234375,
+  "upper_ratio": 548.4078979492188,
+  "dis_flood": 516.7372436523438
+}

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from app.core.config import settings
 from app.schemas.priority import (
     ComplaintCategory,
@@ -11,13 +11,15 @@ from app.schemas.priority import (
 )
 from app.extraction.indicators import extract_indicators
 from app.safety_rules.rules import evaluate_safety_overrides
+from app.features.extractor import FeatureExtractor
+from app.models.xgboost_model import xgb_priority_model
 
 
 def calculate_priority_score(request: PriorityAssessRequest) -> PriorityAssessResponse:
     """
-    Compute explainable, bounded severity score and operational priority level
-    using category baseline weights, NLP indicator extraction with negation handling,
-    and deterministic safety overrides.
+    Compute explainable, bounded severity score and operational priority level.
+    Uses trained XGBoost model when available, falling back gracefully to category
+    baseline weights and NLP indicator extraction, with deterministic safety overrides.
     """
     # 1. Unify text
     clean_title = (request.title or "").strip()
@@ -61,9 +63,26 @@ def calculate_priority_score(request: PriorityAssessRequest) -> PriorityAssessRe
     f_urgency = min(urgency_points, settings.MAX_FACTOR_URGENCY)
 
     raw_score = base_score + f_safety + f_impact + f_damage + f_urgency
-    bounded_score = round(min(100.0, max(0.0, raw_score)), 1)
 
-    # 5. Deterministic Safety Overrides
+    # 5. Check if trained XGBoost model is available
+    xgb_score: Optional[float] = None
+    if xgb_priority_model.is_ready:
+        features = FeatureExtractor.extract_features(
+            title=clean_title,
+            description=clean_desc,
+            category=request.category.value,
+            disaster_type=request.disaster_type.value if request.disaster_type else None,
+        )
+        xgb_score = xgb_priority_model.predict_score(features)
+
+    if xgb_score is not None:
+        bounded_score = xgb_score
+        method_used = AssessmentMethod.ML_MODEL
+    else:
+        bounded_score = round(min(100.0, max(0.0, raw_score)), 1)
+        method_used = AssessmentMethod.RULE_BASED_BASELINE
+
+    # 6. Deterministic Safety Overrides (Always enforced on top of ML)
     is_override, reason_codes, override_rationale = evaluate_safety_overrides(
         category=request.category,
         disaster_type=request.disaster_type,
@@ -86,21 +105,27 @@ def calculate_priority_score(request: PriorityAssessRequest) -> PriorityAssessRe
         else:
             priority_level = PriorityLevel.LOW
 
-        factor_summary = []
-        if f_safety > 0:
-            factor_summary.append(f"safety hazard (+{f_safety:.1f})")
-        if f_impact > 0:
-            factor_summary.append(f"public impact (+{f_impact:.1f})")
-        if f_damage > 0:
-            factor_summary.append(f"damage extent (+{f_damage:.1f})")
-        if f_urgency > 0:
-            factor_summary.append(f"urgency (+{f_urgency:.1f})")
+        if method_used == AssessmentMethod.ML_MODEL:
+            explanation = (
+                f"Evaluated as {priority_level.value} (score: {final_score:.1f}/100) using "
+                f"trained XGBoost model for {request.category.value}."
+            )
+        else:
+            factor_summary = []
+            if f_safety > 0:
+                factor_summary.append(f"safety hazard (+{f_safety:.1f})")
+            if f_impact > 0:
+                factor_summary.append(f"public impact (+{f_impact:.1f})")
+            if f_damage > 0:
+                factor_summary.append(f"damage extent (+{f_damage:.1f})")
+            if f_urgency > 0:
+                factor_summary.append(f"urgency (+{f_urgency:.1f})")
 
-        factors_text = f" with {', '.join(factor_summary)}" if factor_summary else " with routine baseline"
-        explanation = (
-            f"Evaluated as {priority_level.value} (score: {final_score:.1f}/100) based on "
-            f"{request.category.value} category base ({base_score:.1f}){factors_text}."
-        )
+            factors_text = f" with {', '.join(factor_summary)}" if factor_summary else " with routine baseline"
+            explanation = (
+                f"Evaluated as {priority_level.value} (score: {final_score:.1f}/100) based on "
+                f"{request.category.value} category base ({base_score:.1f}){factors_text}."
+            )
 
     breakdown = ScoreBreakdown(
         base_category_score=base_score,
@@ -121,7 +146,7 @@ def calculate_priority_score(request: PriorityAssessRequest) -> PriorityAssessRe
         human_review_recommended=True,
         detected_indicators=indicators,
         score_breakdown=breakdown,
-        assessment_method=AssessmentMethod.RULE_BASED_BASELINE,
+        assessment_method=method_used,
         rule_version=settings.RULES_VERSION,
         explanation=explanation,
     )
