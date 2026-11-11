@@ -7,6 +7,8 @@ import {
   ComplaintFilters,
   UpdateStatusPayload,
   EvidenceItemPayload,
+  CheckDuplicatePayload,
+  DuplicateCheckResult,
 } from '../types/complaint.ts';
 
 interface SingleComplaintResponse {
@@ -14,6 +16,19 @@ interface SingleComplaintResponse {
   data: {
     complaint: ComplaintDetail;
   };
+}
+
+interface CheckDuplicateResponse {
+  success: boolean;
+  data: DuplicateCheckResult;
+}
+
+/**
+ * Checks a draft complaint for potential duplicates before final submission
+ */
+export async function checkDuplicateComplaint(payload: CheckDuplicatePayload): Promise<DuplicateCheckResult> {
+  const response = await apiClient.post<CheckDuplicateResponse>('/complaints/check-duplicate', payload);
+  return response.data.data;
 }
 
 interface ListComplaintsResponse {

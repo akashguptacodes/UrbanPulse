@@ -18,10 +18,7 @@ export class AuthService {
     // Check for duplicate account
     const existingUser = await this.userRepo.findByEmail(normalizedEmail);
     if (existingUser) {
-      const error: AppError = new Error('An account with this email address already exists');
-      error.statusCode = 409;
-      error.code = 'EMAIL_ALREADY_EXISTS';
-      throw error;
+      throw new AppError('An account with this email address already exists', 409, 'EMAIL_ALREADY_EXISTS');
     }
 
     // Hash password with bcrypt work factor 12
@@ -46,18 +43,12 @@ export class AuthService {
 
     const user = await this.userRepo.findByEmail(normalizedEmail);
     if (!user) {
-      const error: AppError = new Error('Invalid email or password');
-      error.statusCode = 401;
-      error.code = 'INVALID_CREDENTIALS';
-      throw error;
+      throw new AppError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
     }
 
     const isValidPassword = await comparePassword(input.password, user.password_hash);
     if (!isValidPassword) {
-      const error: AppError = new Error('Invalid email or password');
-      error.statusCode = 401;
-      error.code = 'INVALID_CREDENTIALS';
-      throw error;
+      throw new AppError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
     }
 
     const token = generateToken({
@@ -78,10 +69,7 @@ export class AuthService {
   public async getCurrentUser(userId: string): Promise<SafeUser> {
     const user = await this.userRepo.findById(userId);
     if (!user) {
-      const error: AppError = new Error('Authenticated user account could not be found');
-      error.statusCode = 401;
-      error.code = 'USER_NOT_FOUND';
-      throw error;
+      throw new AppError('Authenticated user account could not be found', 401, 'USER_NOT_FOUND');
     }
 
     return this.userRepo.toSafeUser(user);

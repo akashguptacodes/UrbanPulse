@@ -9,7 +9,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { DuplicateComplaintInput } from '../services/ai/aiSchemas.js';
 import { storageService } from '../services/storageService.js';
 
-export interface ComplaintWithRelations extends Complaint {
+export type ComplaintWithRelations = Complaint & {
   citizen?: { id: string; full_name: string; email: string };
   evidence?: Array<{
     id: string;
@@ -27,11 +27,8 @@ export interface ComplaintWithRelations extends Complaint {
     created_at: Date;
     changed_by?: { full_name: string; email: string };
   }>;
-  ai_assessment?: any;
-  is_duplicate?: boolean;
-  parent_complaint_id?: string | null;
   duplicate_count?: number;
-}
+};
 
 export interface IComplaintRepository {
   create(citizenId: string, input: CreateComplaintInput): Promise<ComplaintWithRelations>;
@@ -205,10 +202,7 @@ export class PrismaComplaintRepository implements IComplaintRepository {
         });
 
         if (!current) {
-          const error: AppError = new Error('Complaint not found');
-          error.statusCode = 404;
-          error.code = 'NOT_FOUND';
-          throw error;
+          throw new AppError('Complaint not found', 404, 'NOT_FOUND');
         }
 
         const previousStatus = current.current_status;
@@ -475,6 +469,10 @@ export class InMemoryComplaintRepository implements IComplaintRepository {
       longitude: new Prisma.Decimal(input.longitude),
       address_text: input.address_text ?? null,
       current_status: ComplaintStatus.SUBMITTED,
+      is_duplicate: false,
+      parent_complaint_id: null,
+      duplicate_count: 0,
+      ai_assessment: null,
       created_at: now,
       updated_at: now,
       citizen: {
@@ -605,10 +603,7 @@ export class InMemoryComplaintRepository implements IComplaintRepository {
   ): Promise<ComplaintWithRelations> {
     const complaint = this.complaints.get(complaintId);
     if (!complaint) {
-      const error: AppError = new Error('Complaint not found');
-      error.statusCode = 404;
-      error.code = 'NOT_FOUND';
-      throw error;
+      throw new AppError('Complaint not found', 404, 'NOT_FOUND');
     }
 
     const previousStatus = complaint.current_status;
@@ -734,7 +729,7 @@ export class InMemoryComplaintRepository implements IComplaintRepository {
       is_duplicate: complaint.is_duplicate ?? false,
       parent_complaint_id: complaint.parent_complaint_id ?? null,
       duplicate_count: complaint.duplicate_count ?? 0,
-      ai_assessment: complaint.ai_assessment,
+      ai_assessment: (complaint.ai_assessment as any) || undefined,
       created_at: new Date(complaint.created_at).toISOString(),
       updated_at: new Date(complaint.updated_at).toISOString(),
       evidence: (complaint.evidence || []).map((e) => ({

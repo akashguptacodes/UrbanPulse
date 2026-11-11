@@ -12,6 +12,7 @@ router.use(requireAuth);
 router.post('/evidence/upload', upload.single('file'), complaintController.uploadEvidence);
 
 // Citizen & Admin endpoints
+router.post('/check-duplicate', complaintController.checkDuplicate);
 router.post('/', complaintController.create);
 router.get('/', complaintController.list);
 router.get('/:id', complaintController.getById);

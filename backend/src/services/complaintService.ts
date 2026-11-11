@@ -1,4 +1,5 @@
 import { Prisma, ComplaintStatus } from '@prisma/client';
+import { prisma } from '../repositories/prisma.js';
 import {
   complaintRepository,
   IComplaintRepository,
@@ -7,6 +8,9 @@ import {
   ComplaintDetailDto,
   ComplaintListResult,
   CreateComplaintInput,
+  CheckDuplicateInput,
+  DuplicateCheckResultDto,
+  DuplicateMatchItem,
   UpdateComplaintStatusInput,
 } from '../types/complaint.js';
 import { AuthenticatedUser } from '../types/auth.js';
@@ -14,12 +18,14 @@ import { AppError } from '../middleware/errorHandler.js';
 import { validateStatusTransition } from './statusTransitionPolicy.js';
 import { ListComplaintsQuery } from '../validators/complaintValidators.js';
 import { aiOrchestrator, AIOrchestrator } from './ai/aiOrchestrator.js';
+import { duplicateServiceClient, DuplicateServiceClient } from './ai/duplicateClient.js';
 import { DuplicateComplaintInput } from './ai/aiSchemas.js';
 
 export class ComplaintService {
   constructor(
     private repo: IComplaintRepository = complaintRepository,
-    private orchestrator: AIOrchestrator = aiOrchestrator
+    private orchestrator: AIOrchestrator = aiOrchestrator,
+    private duplicateClient: DuplicateServiceClient = duplicateServiceClient
   ) {}
 
   /**
@@ -73,9 +79,12 @@ export class ComplaintService {
       );
 
       // Determine parent-child clustering:
-      // If a match is found among prior candidates, tag as DUPLICATE pointing to parent.
-      // If no match is found, this complaint remains the ORIGINAL (Root / Parent) complaint.
-      if (
+      // If user explicitly marked override_duplicate = true, keep as original.
+      // Otherwise, if a match is found among prior candidates, tag as DUPLICATE pointing to parent.
+      if (input.override_duplicate) {
+        isDuplicate = false;
+        parentComplaintId = null;
+      } else if (
         assessmentResult.duplicate_check?.has_potential_duplicate &&
         assessmentResult.duplicate_check?.parent_candidate_id
       ) {
@@ -193,19 +202,13 @@ export class ComplaintService {
     const complaint = await this.repo.findById(complaintId);
 
     if (!complaint) {
-      const error: AppError = new Error('Complaint not found');
-      error.statusCode = 404;
-      error.code = 'NOT_FOUND';
-      throw error;
+      throw new AppError('Complaint not found', 404, 'NOT_FOUND');
     }
 
     // Citizens may only access their own complaints.
     // Return 404 instead of 403 to prevent existence leakage / ID enumeration.
     if (currentUser.role === 'CITIZEN' && complaint.citizen_id !== currentUser.id) {
-      const error: AppError = new Error('Complaint not found');
-      error.statusCode = 404;
-      error.code = 'NOT_FOUND';
-      throw error;
+      throw new AppError('Complaint not found', 404, 'NOT_FOUND');
     }
 
     const detailDto = this.repo.toDetailDto(complaint);
@@ -282,19 +285,13 @@ export class ComplaintService {
   }> {
     // 1. Authorization check
     if (currentUser.role !== 'ADMIN') {
-      const error: AppError = new Error('Only administrators are authorized to update complaint status');
-      error.statusCode = 403;
-      error.code = 'FORBIDDEN';
-      throw error;
+      throw new AppError('Only administrators are authorized to update complaint status', 403, 'FORBIDDEN');
     }
 
     // 2. Fetch current complaint
     const current = await this.repo.findById(complaintId);
     if (!current) {
-      const error: AppError = new Error('Complaint not found');
-      error.statusCode = 404;
-      error.code = 'NOT_FOUND';
-      throw error;
+      throw new AppError('Complaint not found', 404, 'NOT_FOUND');
     }
 
     const previousStatus = current.current_status;
@@ -319,6 +316,122 @@ export class ComplaintService {
       updated_at: new Date(updated.updated_at).toISOString(),
       complaint: complaintDto,
     };
+  }
+
+  /**
+   * Pre-check candidate complaints for potential duplicates before final submission.
+   * Returns human-readable matching complaint details for user confirmation.
+   */
+  public async checkDuplicate(input: CheckDuplicateInput): Promise<DuplicateCheckResultDto> {
+    let candidates: DuplicateComplaintInput[] = [];
+    try {
+      candidates = await this.repo.findCandidatesForDuplicateCheck(
+        input.primary_category,
+        input.disaster_type ?? null,
+        input.latitude,
+        input.longitude,
+        undefined,
+        20
+      );
+    } catch (err: any) {
+      console.warn('Failed to retrieve candidates for duplicate pre-check:', err?.message);
+    }
+
+    if (!candidates || candidates.length === 0) {
+      return {
+        has_potential_duplicate: false,
+        candidates_evaluated: 0,
+        matches: [],
+        top_match: null,
+      };
+    }
+
+    try {
+      const dupRes = await this.duplicateClient.evaluateDuplicates({
+        target_complaint: {
+          id: 'draft-precheck',
+          title: input.title,
+          description: input.description,
+          category: input.primary_category,
+          disaster_type: input.disaster_type ?? null,
+          latitude: input.latitude,
+          longitude: input.longitude,
+        },
+        candidate_pool: candidates,
+      });
+
+      const matchingDetails = dupRes.matches.filter(
+        (m) =>
+          m.recommendation === 'LIKELY_DUPLICATE' ||
+          m.recommendation === 'POSSIBLE_DUPLICATE' ||
+          m.combined_score >= 0.50 ||
+          m.distance_meters <= 15.0
+      );
+
+      if (matchingDetails.length === 0) {
+        return {
+          has_potential_duplicate: false,
+          candidates_evaluated: dupRes.candidates_evaluated,
+          matches: [],
+          top_match: null,
+        };
+      }
+
+      // Fetch actual database records for rich metadata (status, address, etc.)
+      const matchIds = matchingDetails.map((m) => m.candidate_id);
+      let records: any[] = [];
+      try {
+        records = await prisma.complaint.findMany({
+          where: { id: { in: matchIds } },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            primary_category: true,
+            current_status: true,
+            address_text: true,
+            created_at: true,
+          },
+        });
+      } catch (dbErr) {
+        console.warn('Failed to fetch rich complaint records for duplicates:', dbErr);
+      }
+
+      const recordMap = new Map(records.map((r) => [r.id, r]));
+      const candidateMap = new Map(candidates.map((c) => [c.id, c]));
+
+      const formattedMatches: DuplicateMatchItem[] = matchingDetails.map((m) => {
+        const dbRec = recordMap.get(m.candidate_id);
+        const cand = candidateMap.get(m.candidate_id);
+        return {
+          id: m.candidate_id,
+          title: dbRec?.title || cand?.title || 'Existing Report',
+          description: dbRec?.description || cand?.description || '',
+          primary_category: (dbRec?.primary_category || cand?.category || input.primary_category) as any,
+          current_status: dbRec?.current_status || 'SUBMITTED',
+          distance_meters: m.distance_meters,
+          similarity_score: m.combined_score,
+          recommendation: m.recommendation,
+          address_text: dbRec?.address_text ?? null,
+          created_at: dbRec?.created_at ? dbRec.created_at.toISOString() : new Date().toISOString(),
+        };
+      });
+
+      return {
+        has_potential_duplicate: true,
+        candidates_evaluated: dupRes.candidates_evaluated,
+        matches: formattedMatches,
+        top_match: formattedMatches[0] || null,
+      };
+    } catch (err: any) {
+      console.warn('Duplicate pre-check evaluation error:', err?.message);
+      return {
+        has_potential_duplicate: false,
+        candidates_evaluated: 0,
+        matches: [],
+        top_match: null,
+      };
+    }
   }
 }
 

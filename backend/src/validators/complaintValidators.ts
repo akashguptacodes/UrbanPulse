@@ -52,6 +52,7 @@ export const createComplaintSchema = z
       .min(-180, { message: 'Longitude must be between -180 and 180 degrees' })
       .max(180, { message: 'Longitude must be between -180 and 180 degrees' }),
     address_text: z.string().trim().max(255).optional().nullable(),
+    override_duplicate: z.boolean().optional().default(false),
     evidence: z.array(evidenceItemSchema).max(3, { message: 'Maximum 3 evidence attachments allowed' }).optional(),
   })
   .superRefine((data, ctx) => {
@@ -125,3 +126,49 @@ export type UpdateComplaintStatusBody = z.infer<typeof updateComplaintStatusSche
 export const complaintIdParamSchema = z.object({
   id: z.string().uuid({ message: 'Complaint ID must be a valid UUID' }),
 });
+
+export const checkDuplicateSchema = z
+  .object({
+    title: z
+      .string({ required_error: 'Title is required' })
+      .trim()
+      .min(5, { message: 'Title must be at least 5 characters long' })
+      .max(150, { message: 'Title cannot exceed 150 characters' }),
+    description: z
+      .string({ required_error: 'Description is required' })
+      .trim()
+      .min(10, { message: 'Description must be at least 10 characters long' })
+      .max(2000, { message: 'Description cannot exceed 2000 characters' }),
+    primary_category: z.enum(COMPLAINT_CATEGORIES, {
+      errorMap: () => ({
+        message: "primary_category must be one of: 'POTHOLES', 'STREET_LIGHTS', 'GARBAGE', 'DISASTERS'",
+      }),
+    }),
+    disaster_type: z
+      .enum(DISASTER_TYPES, {
+        errorMap: () => ({
+          message: "disaster_type must be one of: 'FIRE', 'FLOOD', 'OTHER'",
+        }),
+      })
+      .optional()
+      .nullable(),
+    latitude: z.coerce
+      .number({ invalid_type_error: 'Latitude must be a valid number' })
+      .min(-90, { message: 'Latitude must be between -90 and 90 degrees' })
+      .max(90, { message: 'Latitude must be between -90 and 90 degrees' }),
+    longitude: z.coerce
+      .number({ invalid_type_error: 'Longitude must be a valid number' })
+      .min(-180, { message: 'Longitude must be between -180 and 180 degrees' })
+      .max(180, { message: 'Longitude must be between -180 and 180 degrees' }),
+  })
+  .superRefine((data, ctx) => {
+    if (data.primary_category === 'DISASTERS' && !data.disaster_type) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['disaster_type'],
+        message: "disaster_type is required when primary_category is 'DISASTERS'",
+      });
+    }
+  });
+
+export type CheckDuplicateBody = z.infer<typeof checkDuplicateSchema>;

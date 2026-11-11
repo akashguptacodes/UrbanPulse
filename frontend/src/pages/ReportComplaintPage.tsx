@@ -1,13 +1,16 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { createComplaint, uploadEvidenceImage } from '../services/complaintApi.ts';
+import { createComplaint, uploadEvidenceImage, checkDuplicateComplaint } from '../services/complaintApi.ts';
 import {
   ComplaintCategory,
   DisasterType,
   EvidenceItemPayload,
+  CreateComplaintPayload,
+  DuplicateMatchItem,
   COMPLAINT_CATEGORIES,
   DISASTER_TYPES,
 } from '../types/complaint.ts';
+import { DuplicateConfirmationModal } from '../components/DuplicateConfirmationModal.tsx';
 import { CIVIC_VISUALS } from '../constants/visuals.ts';
 import {
   ArrowLeft,
@@ -39,9 +42,15 @@ export const ReportComplaintPage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
+
+  // Duplicate Confirmation Interception State
+  const [duplicateMatches, setDuplicateMatches] = useState<DuplicateMatchItem[]>([]);
+  const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
+  const [pendingPayload, setPendingPayload] = useState<CreateComplaintPayload | null>(null);
 
   // Browser Geolocation Helper
   const handleDetectLocation = () => {
@@ -150,37 +159,11 @@ export const ReportComplaintPage: React.FC = () => {
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeSubmission = async (payload: CreateComplaintPayload) => {
+    setIsSubmitting(true);
     setGeneralError(null);
 
-    if (!validateForm()) {
-      return;
-    }
-
-    setIsSubmitting(true);
-
     try {
-      const payload: any = {
-        title: title.trim(),
-        description: description.trim(),
-        primary_category: primaryCategory,
-        // Ensure stale disaster subtype is never sent for non-disaster complaints
-        disaster_type: primaryCategory === 'DISASTERS' ? disasterType : null,
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-        address_text: addressText.trim() ? addressText.trim() : null,
-      };
-
-      if (uploadedEvidence.length > 0) {
-        payload.evidence = uploadedEvidence.map((ev) => ({
-          original_filename: ev.original_filename,
-          mime_type: ev.mime_type,
-          file_size_bytes: ev.file_size_bytes,
-          storage_key: ev.storage_key,
-        }));
-      }
-
       const created = await createComplaint(payload);
       navigate(`/complaints/${created.id}`);
     } catch (err: unknown) {
@@ -200,6 +183,81 @@ export const ReportComplaintPage: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGeneralError(null);
+
+    if (!validateForm()) {
+      return;
+    }
+
+    const payload: CreateComplaintPayload = {
+      title: title.trim(),
+      description: description.trim(),
+      primary_category: primaryCategory,
+      // Ensure stale disaster subtype is never sent for non-disaster complaints
+      disaster_type: primaryCategory === 'DISASTERS' ? disasterType : null,
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude),
+      address_text: addressText.trim() ? addressText.trim() : null,
+    };
+
+    if (uploadedEvidence.length > 0) {
+      payload.evidence = uploadedEvidence.map((ev) => ({
+        original_filename: ev.original_filename,
+        mime_type: ev.mime_type,
+        file_size_bytes: ev.file_size_bytes,
+        storage_key: ev.storage_key,
+      }));
+    }
+
+    // 1. Run Duplicate Pre-Check
+    setIsCheckingDuplicates(true);
+    try {
+      const dupCheck = await checkDuplicateComplaint({
+        title: payload.title,
+        description: payload.description,
+        primary_category: payload.primary_category,
+        disaster_type: payload.disaster_type,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+      });
+
+      if (dupCheck.has_potential_duplicate && dupCheck.matches.length > 0) {
+        setPendingPayload(payload);
+        setDuplicateMatches(dupCheck.matches);
+        setIsDuplicateModalOpen(true);
+        setIsCheckingDuplicates(false);
+        return;
+      }
+    } catch (checkErr) {
+      console.warn('Duplicate pre-check skipped due to error or offline service:', checkErr);
+    } finally {
+      setIsCheckingDuplicates(false);
+    }
+
+    // 2. If no duplicate detected, proceed directly
+    await executeSubmission(payload);
+  };
+
+  const handleDiscardDuplicate = () => {
+    setIsDuplicateModalOpen(false);
+    navigate('/complaints', {
+      state: {
+        bannerMessage: 'Draft discarded. Thank you for helping keep municipal records clean and avoiding duplicate tickets!'
+      }
+    });
+  };
+
+  const handleProceedAsOriginal = async () => {
+    if (!pendingPayload) return;
+    setIsDuplicateModalOpen(false);
+    await executeSubmission({
+      ...pendingPayload,
+      override_duplicate: true,
+    });
   };
 
   return (
@@ -570,13 +628,35 @@ export const ReportComplaintPage: React.FC = () => {
 
           <button
             type="submit"
-            disabled={isSubmitting}
-            className="px-5 py-2 bg-forest-900 hover:bg-forest-800 text-white text-xs font-bold uppercase tracking-wider rounded-md shadow-sm transition-all disabled:opacity-50 active:scale-98"
+            disabled={isSubmitting || isCheckingDuplicates}
+            className="px-5 py-2 bg-forest-900 hover:bg-forest-800 text-white text-xs font-bold uppercase tracking-wider rounded-md shadow-sm transition-all disabled:opacity-50 active:scale-98 flex items-center gap-1.5"
           >
-            {isSubmitting ? 'Submitting Report...' : 'Submit Complaint'}
+            {isCheckingDuplicates ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Checking Duplicates...</span>
+              </>
+            ) : isSubmitting ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Submitting Report...</span>
+              </>
+            ) : (
+              'Submit Complaint'
+            )}
           </button>
         </div>
       </form>
+
+      {/* Citizen-in-the-loop Duplicate Confirmation Dialog */}
+      <DuplicateConfirmationModal
+        isOpen={isDuplicateModalOpen}
+        matches={duplicateMatches}
+        isSubmitting={isSubmitting}
+        onDiscard={handleDiscardDuplicate}
+        onConfirmProceed={handleProceedAsOriginal}
+        onClose={() => setIsDuplicateModalOpen(false)}
+      />
     </div>
   );
 };

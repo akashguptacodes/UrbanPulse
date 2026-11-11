@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.tsx';
 import { getComplaints } from '../services/complaintApi.ts';
 import {
@@ -30,6 +30,10 @@ import {
 export const ComplaintListPage: React.FC = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const [bannerMessage, setBannerMessage] = useState<string | null>(
+    (location.state as any)?.bannerMessage || null
+  );
 
   const [complaints, setComplaints] = useState<ComplaintListItem[]>([]);
   const [meta, setMeta] = useState<PaginationMeta>({ page: 1, limit: 10, total: 0, totalPages: 1 });
@@ -114,6 +118,22 @@ export const ComplaintListPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Optional Notification Banner (e.g. after discarding duplicate report) */}
+      {bannerMessage && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-md text-emerald-800 text-xs flex items-center justify-between shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <span className="text-base">✅</span>
+            <span className="font-medium">{bannerMessage}</span>
+          </div>
+          <button
+            onClick={() => setBannerMessage(null)}
+            className="text-emerald-600 hover:text-emerald-900 font-bold ml-2 text-xs"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-5 border-b border-civic-border">
         <div>

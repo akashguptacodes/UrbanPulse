@@ -81,12 +81,42 @@ export interface CreateComplaintInput {
   latitude: number;
   longitude: number;
   address_text?: string | null;
+  override_duplicate?: boolean;
   evidence?: Array<{
     original_filename: string;
     mime_type: string;
     file_size_bytes: number;
     storage_key: string;
   }>;
+}
+
+export interface CheckDuplicateInput {
+  title: string;
+  description: string;
+  primary_category: ComplaintCategory;
+  disaster_type?: DisasterType | null;
+  latitude: number;
+  longitude: number;
+}
+
+export interface DuplicateMatchItem {
+  id: string;
+  title: string;
+  description: string;
+  primary_category: ComplaintCategory;
+  current_status: ComplaintStatus;
+  distance_meters: number;
+  similarity_score: number;
+  recommendation: string;
+  address_text?: string | null;
+  created_at: string;
+}
+
+export interface DuplicateCheckResultDto {
+  has_potential_duplicate: boolean;
+  candidates_evaluated: number;
+  matches: DuplicateMatchItem[];
+  top_match?: DuplicateMatchItem | null;
 }
 
 export interface ListComplaintsFilters {

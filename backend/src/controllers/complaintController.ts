@@ -4,6 +4,7 @@ import { storageService, IStorageService } from '../services/storageService.js';
 import { AppError } from '../middleware/errorHandler.js';
 import {
   createComplaintSchema,
+  checkDuplicateSchema,
   listComplaintsQuerySchema,
   updateComplaintStatusSchema,
   complaintIdParamSchema,
@@ -56,6 +57,50 @@ export class ComplaintController {
           complaint: createdComplaint,
           ai_assessment: createdComplaint.ai_assessment,
         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * POST /api/complaints/check-duplicate
+   * Pre-checks a draft complaint for duplicates before final submission.
+   */
+  public checkDuplicate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Authentication required. Please log in to continue.',
+          },
+        });
+        return;
+      }
+
+      const parsedBody = checkDuplicateSchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        res.status(422).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid duplicate check payload',
+            details: parsedBody.error.errors.map((e) => ({
+              field: e.path.join('.'),
+              issue: e.message,
+            })),
+          },
+        });
+        return;
+      }
+
+      const result = await this.service.checkDuplicate(parsedBody.data as any);
+
+      res.status(200).json({
+        success: true,
+        data: result,
       });
     } catch (error) {
       next(error);

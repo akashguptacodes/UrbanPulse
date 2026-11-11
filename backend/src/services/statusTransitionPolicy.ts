@@ -35,34 +35,29 @@ export function validateStatusTransition(
 ): void {
   // Disallow transition to identical status
   if (fromStatus === toStatus) {
-    const error: AppError = new Error(`Complaint is already in status '${fromStatus}'`);
-    error.statusCode = 400;
-    error.code = 'INVALID_STATUS_TRANSITION';
-    throw error;
+    throw new AppError(`Complaint is already in status '${fromStatus}'`, 400, 'INVALID_STATUS_TRANSITION');
   }
 
   // Check state machine permission
   if (!isAllowedTransition(fromStatus, toStatus)) {
     const allowed = ALLOWED_TRANSITIONS[fromStatus] || [];
     const allowedStr = allowed.length > 0 ? allowed.join(', ') : 'none (terminal state)';
-    const error: AppError = new Error(
-      `Invalid status transition from '${fromStatus}' to '${toStatus}'. Allowed transitions: ${allowedStr}`
+    throw new AppError(
+      `Invalid status transition from '${fromStatus}' to '${toStatus}'. Allowed transitions: ${allowedStr}`,
+      400,
+      'INVALID_STATUS_TRANSITION'
     );
-    error.statusCode = 400;
-    error.code = 'INVALID_STATUS_TRANSITION';
-    throw error;
   }
 
   // When transitioning to REJECTED, an administrative reason/note is strictly required
   if (toStatus === 'REJECTED') {
     const trimmedReason = reasonOrNotes?.trim();
     if (!trimmedReason || trimmedReason.length === 0) {
-      const error: AppError = new Error(
-        'A reason or administrative note is mandatory when rejecting a complaint.'
+      throw new AppError(
+        'A reason or administrative note is mandatory when rejecting a complaint.',
+        400,
+        'REJECTION_REASON_REQUIRED'
       );
-      error.statusCode = 400;
-      error.code = 'REJECTION_REASON_REQUIRED';
-      throw error;
     }
   }
 }
