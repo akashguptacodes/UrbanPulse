@@ -43,7 +43,11 @@ def train_and_export():
         print("[ERROR] xgboost is not installed. Please install it using: pip install xgboost")
         return
 
-    data_path = SERVICE_ROOT / "data" / "priority_training_dataset_1000.csv"
+    # Check for 5,000 sample dataset first, fallback to 1,000 if not found
+    data_path_5000 = SERVICE_ROOT / "data" / "priority_training_dataset_5000.csv"
+    data_path_1000 = SERVICE_ROOT / "data" / "priority_training_dataset_1000.csv"
+    data_path = data_path_5000 if data_path_5000.exists() else data_path_1000
+
     artifact_dir = SERVICE_ROOT / "app" / "models" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     model_output_file = artifact_dir / "priority_xgb.json"
@@ -53,7 +57,14 @@ def train_and_export():
     total_samples = len(X)
     print(f"Loaded {total_samples} samples with {len(X[0])} features each.")
 
-    # Simple 80/20 train/test split
+    # Reproducible shuffle before 80/20 train/test split
+    import random
+    combined = list(zip(X, y))
+    random.seed(42)
+    random.shuffle(combined)
+    X, y = zip(*combined)
+    X, y = list(X), list(y)
+
     split_idx = int(total_samples * 0.8)
     X_train, X_test = X[:split_idx], X[split_idx:]
     y_train, y_test = y[:split_idx], y[split_idx:]
@@ -67,19 +78,19 @@ def train_and_export():
     params = {
         "objective": "reg:squarederror",
         "eval_metric": ["rmse", "mae"],
-        "max_depth": 4,
-        "eta": 0.08,
+        "max_depth": 5,
+        "eta": 0.07,
         "subsample": 0.85,
         "colsample_bytree": 0.85,
         "seed": 42
     }
 
     evals = [(dtrain, "train"), (dtest, "eval")]
-    print("\nTraining XGBoost Regressor...")
+    print("\nTraining XGBoost Regressor on dataset...")
     bst = xgb.train(
         params,
         dtrain,
-        num_boost_round=120,
+        num_boost_round=150,
         evals=evals,
         verbose_eval=30
     )

@@ -30,6 +30,8 @@ class FeatureExtractor:
 
         # 1. One-hot encode primary category (4 features)
         cat_upper = (category or "").upper()
+        if "GARBAGE" in cat_upper:
+            cat_upper = "GARBAGE"
         for cat in CATEGORIES:
             features.append(1.0 if cat_upper == cat else 0.0)
 
