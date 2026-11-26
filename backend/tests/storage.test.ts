@@ -6,6 +6,10 @@ import {
   LocalStorageService,
   CloudinaryStorageService,
 } from '../src/services/storageService.js';
+import {
+  GeminiImageValidationService,
+  IImageValidationService,
+} from '../src/services/imageValidationService.js';
 import { ComplaintController } from '../src/controllers/complaintController.js';
 import { InMemoryComplaintRepository } from '../src/repositories/complaintRepository.js';
 import { ComplaintService } from '../src/services/complaintService.js';
@@ -112,7 +116,15 @@ describe('UrbanPulse — Image Storage (Local & Cloudinary Integration)', () => 
       });
 
       const service = new ComplaintService(inMemoryRepo);
-      const controller = new ComplaintController(service, localStorage);
+      const mockValidator: IImageValidationService = {
+        validateCivicIssueImage: vi.fn().mockResolvedValue({
+          isValid: true,
+          detectedCategory: 'POTHOLES',
+          confidence: 'HIGH',
+          reason: 'Mocked for storage unit test',
+        }),
+      };
+      const controller = new ComplaintController(service, localStorage, mockValidator);
 
       app = express();
       app.use(express.json());
@@ -160,6 +172,127 @@ describe('UrbanPulse — Image Storage (Local & Cloudinary Integration)', () => 
 
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('INVALID_FILE_TYPE');
+    });
+  });
+
+  describe('5. Civic Issue Image Category Restriction', () => {
+    let app: Express;
+    let token: string;
+    let mockValidator: IImageValidationService;
+    let saveFileSpy: ReturnType<typeof vi.spyOn>;
+
+    const setupAppWithValidator = (validator: IImageValidationService) => {
+      const inMemoryRepo = new InMemoryComplaintRepository();
+      inMemoryRepo.registerUser('user-1', 'Test Citizen', 'user@example.com');
+      token = generateToken({
+        id: 'user-1',
+        email: 'user@example.com',
+        full_name: 'Test Citizen',
+        role: 'CITIZEN',
+      });
+
+      const service = new ComplaintService(inMemoryRepo);
+      saveFileSpy = vi.spyOn(localStorage, 'saveFile');
+      const controller = new ComplaintController(service, localStorage, validator);
+
+      app = express();
+      app.use(express.json());
+      app.use(cookieParser());
+      app.post(
+        '/api/complaints/evidence/upload',
+        requireAuth,
+        upload.single('file'),
+        controller.uploadEvidence
+      );
+      app.use(notFoundHandler);
+      app.use(errorHandler);
+    };
+
+    it('rejects an image outside the 4 civic categories and does not save it to storage', async () => {
+      mockValidator = {
+        validateCivicIssueImage: vi.fn().mockResolvedValue({
+          isValid: false,
+          detectedCategory: 'UNRELATED',
+          confidence: 'HIGH',
+          reason: 'Image shows a pet cat indoors.',
+        }),
+      };
+      setupAppWithValidator(mockValidator);
+
+      const res = await request(app)
+        .post('/api/complaints/evidence/upload')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('file', Buffer.from('cat selfie'), {
+          filename: 'cat.jpg',
+          contentType: 'image/jpeg',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('INVALID_IMAGE_CATEGORY');
+      expect(res.body.error.message).toBe(
+        'Please upload a valid image regarding the 4 categories issues.'
+      );
+      expect(saveFileSpy).not.toHaveBeenCalled();
+    });
+
+    it('accepts an image matching one of the 4 civic categories', async () => {
+      mockValidator = {
+        validateCivicIssueImage: vi.fn().mockResolvedValue({
+          isValid: true,
+          detectedCategory: 'GARBAGE',
+          confidence: 'HIGH',
+          reason: 'Overflowing public dumpster.',
+        }),
+      };
+      setupAppWithValidator(mockValidator);
+
+      const res = await request(app)
+        .post('/api/complaints/evidence/upload')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('file', Buffer.from('garbage image'), {
+          filename: 'trash.png',
+          contentType: 'image/png',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(saveFileSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('GeminiImageValidationService classifies valid and unrelated Gemini responses accurately', async () => {
+      const validator = new GeminiImageValidationService('fake-key', true, 'gemini-4-hydrogen');
+      const createMock = vi
+        .fn()
+        .mockResolvedValueOnce({
+          output_text: JSON.stringify({
+            is_valid_civic_issue: true,
+            category: 'POTHOLES',
+            confidence: 'HIGH',
+            reason: 'Deep pothole in asphalt road.',
+          }),
+        })
+        .mockResolvedValueOnce({
+          output_text: JSON.stringify({
+            is_valid_civic_issue: false,
+            category: 'UNRELATED',
+            confidence: 'HIGH',
+            reason: 'Portrait photo.',
+          }),
+        });
+
+      // Inject mock client
+      (validator as unknown as { client: { interactions: { create: typeof createMock } } }).client = {
+        interactions: { create: createMock },
+      };
+
+      const validRes = await validator.validateCivicIssueImage(Buffer.from('img1'), 'image/jpeg');
+      expect(validRes.isValid).toBe(true);
+      expect(validRes.detectedCategory).toBe('POTHOLES');
+
+      const invalidRes = await validator.validateCivicIssueImage(Buffer.from('img2'), 'image/jpeg');
+      expect(invalidRes.isValid).toBe(false);
+      expect(invalidRes.detectedCategory).toBe('UNRELATED');
     });
   });
 });

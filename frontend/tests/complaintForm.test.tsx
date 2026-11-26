@@ -133,4 +133,44 @@ describe('Report Complaint Form Tests', () => {
       });
     });
   });
+
+  it('opens camera capture modal when clicking the camera icon button', async () => {
+    const mockStop = vi.fn();
+    const mockStream = {
+      getTracks: () => [{ stop: mockStop }],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(HTMLMediaElement.prototype, 'srcObject', {
+      configurable: true,
+      writable: true,
+      value: null,
+    });
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue(mockStream),
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <ReportComplaintPage />
+      </MemoryRouter>
+    );
+
+    const cameraBtn = screen.getByRole('button', { name: /open camera to capture photo/i });
+    fireEvent.click(cameraBtn);
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: /camera photo capture/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /capture & add photo/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /camera photo capture/i })).not.toBeInTheDocument();
+      expect(mockStop).toHaveBeenCalled();
+    });
+  });
 });

@@ -1,6 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { complaintService, ComplaintService } from '../services/complaintService.js';
 import { storageService, IStorageService } from '../services/storageService.js';
+import {
+  imageValidationService,
+  IImageValidationService,
+} from '../services/imageValidationService.js';
 import { AppError } from '../middleware/errorHandler.js';
 import {
   createComplaintSchema,
@@ -13,7 +17,8 @@ import {
 export class ComplaintController {
   constructor(
     private service: ComplaintService = complaintService,
-    private storage: IStorageService = storageService
+    private storage: IStorageService = storageService,
+    private imageValidator: IImageValidationService = imageValidationService
   ) {}
 
   /**
@@ -277,6 +282,23 @@ export class ComplaintController {
 
       if (!req.file) {
         throw new AppError('No evidence image file uploaded', 400, 'NO_FILE_UPLOADED');
+      }
+
+      const validation = await this.imageValidator.validateCivicIssueImage(
+        req.file.buffer,
+        req.file.mimetype
+      );
+
+      if (!validation.isValid) {
+        throw new AppError(
+          'Please upload a valid image regarding the 4 categories issues.',
+          400,
+          'INVALID_IMAGE_CATEGORY',
+          {
+            detected_category: validation.detectedCategory,
+            reason: validation.reason,
+          }
+        );
       }
 
       const storageKey = await this.storage.saveFile(

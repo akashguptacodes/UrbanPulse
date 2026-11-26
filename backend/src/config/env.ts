@@ -44,6 +44,18 @@ const envSchema = z.object({
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
+  // Image Content Validation (Gemini Vision)
+  GEMINI_API_KEY: z.string().optional(),
+  IMAGE_VALIDATION_ENABLED: z
+    .preprocess((val) => {
+      if (val === undefined || val === '') return true;
+      if (val === 'false' || val === false) return false;
+      return true;
+    }, z.boolean())
+    .default(true),
+  IMAGE_VALIDATION_MODEL: z
+    .enum(['gemini-3.5-flash-lite', 'gemini-4-hydrogen', 'gemini-3.1-flash-lite'])
+    .default('gemini-3.5-flash-lite'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
