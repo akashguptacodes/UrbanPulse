@@ -21,6 +21,7 @@
     "create-admin": "tsx scripts/createAdmin.ts"
   },
   "dependencies": {
+    "@google/genai": "^3.6.1",
     "@prisma/client": "^5.22.0",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.11.0",

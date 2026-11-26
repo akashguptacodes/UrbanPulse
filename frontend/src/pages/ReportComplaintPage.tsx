@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { createComplaint, uploadEvidenceImage, checkDuplicateComplaint } from '../services/complaintApi.ts';
 import {
@@ -22,6 +22,7 @@ import {
   Trash2,
   FileText,
   Sparkles,
+  X,
 } from 'lucide-react';
 
 export const ReportComplaintPage: React.FC = () => {
@@ -40,6 +41,13 @@ export const ReportComplaintPage: React.FC = () => {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  // Live Camera Capture State
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isStartingCamera, setIsStartingCamera] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
@@ -76,11 +84,27 @@ export const ReportComplaintPage: React.FC = () => {
     );
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  const stopCameraStream = useCallback(() => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, []);
 
-    if (uploadedEvidence.length + files.length > 3) {
+  useEffect(() => {
+    return () => {
+      stopCameraStream();
+    };
+  }, [stopCameraStream]);
+
+  const processAndUploadFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+
+    if (uploadedEvidence.length + fileArray.length > 3) {
       setUploadError('Maximum 3 evidence images can be attached per complaint.');
       return;
     }
@@ -89,9 +113,7 @@ export const ReportComplaintPage: React.FC = () => {
     setIsUploadingImage(true);
 
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-
+      for (const file of fileArray) {
         const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
         if (!validTypes.includes(file.type)) {
           throw new Error(`File "${file.name}" has invalid format. Only JPEG, PNG, or WebP images are supported.`);
@@ -111,7 +133,102 @@ export const ReportComplaintPage: React.FC = () => {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+      if (cameraInputRef.current) {
+        cameraInputRef.current.value = '';
+      }
     }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      await processAndUploadFiles(e.target.files);
+    }
+  };
+
+  const handleOpenCamera = async () => {
+    if (isUploadingImage || uploadedEvidence.length >= 3) return;
+    setUploadError(null);
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      // Fallback for browsers/devices without getUserMedia support
+      cameraInputRef.current?.click();
+      return;
+    }
+
+    setIsCameraOpen(true);
+    setIsStartingCamera(true);
+
+    try {
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' },
+          audio: false,
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
+
+      cameraStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        if (typeof videoRef.current.play === 'function') {
+          await Promise.resolve(videoRef.current.play()).catch(() => {});
+        }
+      }
+    } catch (err) {
+      stopCameraStream();
+      setIsCameraOpen(false);
+      const message =
+        err instanceof Error ? err.message : 'Camera access was denied or no camera was found.';
+      setUploadError(`Unable to open camera: ${message}`);
+    } finally {
+      setIsStartingCamera(false);
+    }
+  };
+
+  const handleCloseCamera = () => {
+    stopCameraStream();
+    setIsCameraOpen(false);
+  };
+
+  const handleCapturePhoto = async () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      setUploadError('Camera is not ready yet. Please wait a moment and try again.');
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      setUploadError('Unable to capture photo from camera.');
+      return;
+    }
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.9)
+    );
+
+    stopCameraStream();
+    setIsCameraOpen(false);
+
+    if (!blob) {
+      setUploadError('Failed to process captured photo.');
+      return;
+    }
+
+    const capturedFile = new File([blob], `camera-evidence-${Date.now()}.jpg`, {
+      type: 'image/jpeg',
+    });
+    await processAndUploadFiles([capturedFile]);
   };
 
   const handleRemoveEvidence = (index: number) => {
@@ -546,9 +663,28 @@ export const ReportComplaintPage: React.FC = () => {
               className="hidden"
               id="evidence-file-input"
             />
-            <div className="w-10 h-10 rounded-md bg-white border border-civic-border flex items-center justify-center mx-auto text-emerald-700 shadow-2xs">
+            <input
+              type="file"
+              ref={cameraInputRef}
+              onChange={handleFileChange}
+              accept="image/jpeg,image/png,image/webp"
+              capture="environment"
+              disabled={isUploadingImage || uploadedEvidence.length >= 3}
+              className="hidden"
+              id="evidence-camera-input"
+            />
+            <button
+              type="button"
+              onClick={handleOpenCamera}
+              disabled={isUploadingImage || uploadedEvidence.length >= 3}
+              aria-label="Open camera to capture photo"
+              title="Open camera to capture photo"
+              className={`w-10 h-10 rounded-md bg-white border border-civic-border hover:border-forest-500 hover:bg-forest-50 flex items-center justify-center mx-auto text-emerald-700 shadow-2xs transition-all cursor-pointer active:scale-95 ${
+                isUploadingImage || uploadedEvidence.length >= 3 ? 'opacity-50 pointer-events-none' : ''
+              }`}
+            >
               <Camera className="w-5 h-5" />
-            </div>
+            </button>
 
             <div>
               <label
@@ -558,11 +694,11 @@ export const ReportComplaintPage: React.FC = () => {
                 }`}
               >
                 <UploadCloud className="w-4 h-4 text-lime-400" />
-                <span>{isUploadingImage ? 'Uploading Image...' : 'Select or Capture Photo'}</span>
+                <span>{isUploadingImage ? 'Validating & Uploading Image...' : 'Select or Capture Photo'}</span>
               </label>
             </div>
             <p className="text-[11px] text-civic-muted">
-              Supports JPEG, PNG, or WebP up to 5MB each.
+              Supports JPEG, PNG, or WebP up to 5MB each. Images must show one of the 4 civic issue categories (Potholes, Street Lights, Garbage, or Disasters).
             </p>
           </div>
 
@@ -647,6 +783,67 @@ export const ReportComplaintPage: React.FC = () => {
           </button>
         </div>
       </form>
+
+      {/* Live Camera Capture Modal */}
+      {isCameraOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Camera photo capture"
+        >
+          <div className="bg-white rounded-lg border border-civic-border shadow-xl max-w-lg w-full overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-civic-border bg-forest-50/50">
+              <div className="flex items-center gap-2 text-sm font-bold text-forest-950">
+                <Camera className="w-4 h-4 text-emerald-700" />
+                <span>Capture Civic Issue Photo</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseCamera}
+                aria-label="Close camera"
+                className="p-1 text-civic-muted hover:text-forest-950 rounded"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-black relative aspect-video flex items-center justify-center">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+              {isStartingCamera && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white text-xs font-medium">
+                  Starting camera...
+                </div>
+              )}
+            </div>
+
+            <div className="px-4 py-3 flex items-center justify-end gap-2.5 bg-white border-t border-civic-border">
+              <button
+                type="button"
+                onClick={handleCloseCamera}
+                className="px-3.5 py-2 border border-civic-border text-civic-muted hover:text-forest-950 text-xs font-semibold rounded-md"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCapturePhoto}
+                disabled={isStartingCamera}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-forest-900 hover:bg-forest-800 text-white text-xs font-bold rounded-md shadow-sm disabled:opacity-50"
+              >
+                <Camera className="w-3.5 h-3.5 text-lime-400" />
+                <span>Capture & Add Photo</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Citizen-in-the-loop Duplicate Confirmation Dialog */}
       <DuplicateConfirmationModal
