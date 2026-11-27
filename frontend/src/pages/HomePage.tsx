@@ -152,6 +152,7 @@ export const HomePage: React.FC = () => {
           {COMPLAINT_CATEGORIES.map((cat) => {
             const visual = CIVIC_VISUALS.categories[cat.key];
             const isDisaster = cat.key === 'DISASTERS';
+            const targetUrl = `/complaints/new?category=${cat.key}`;
 
             return (
               <div
@@ -161,7 +162,10 @@ export const HomePage: React.FC = () => {
                 }`}
               >
                 {/* Photo Thumbnail */}
-                <div className="relative h-40 w-full overflow-hidden bg-forest-950">
+                <Link
+                  to={targetUrl}
+                  className="block relative h-40 w-full overflow-hidden bg-forest-950 focus:outline-hidden"
+                >
                   <img
                     src={visual.image}
                     alt={cat.label}
@@ -183,39 +187,55 @@ export const HomePage: React.FC = () => {
                   <div className="absolute bottom-2.5 left-2.5 text-white">
                     <span className="text-[11px] font-medium opacity-90">{visual.tagline}</span>
                   </div>
-                </div>
+                </Link>
 
                 {/* Card Content */}
                 <div className="p-4 flex-1 flex flex-col justify-between space-y-3.5">
                   <div className="space-y-1.5">
-                    <h3 className="font-display font-bold text-sm text-forest-950 group-hover:text-emerald-700 transition-colors">
-                      {cat.label}
-                    </h3>
+                    <Link to={targetUrl} className="block">
+                      <h3 className="font-display font-bold text-sm text-forest-950 group-hover:text-emerald-700 transition-colors">
+                        {cat.label}
+                      </h3>
+                    </Link>
                     <p className="text-xs text-civic-muted leading-relaxed line-clamp-3">{cat.description}</p>
                   </div>
 
                   {isDisaster ? (
-                    <div className="pt-2.5 border-t border-red-100 text-[11px] space-y-1.5 bg-red-50/60 p-2 rounded">
-                      <div className="font-bold text-red-900 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping" />
-                        Required Emergency Subtypes:
+                    <div className="space-y-3 pt-2.5 border-t border-red-100">
+                      <div className="text-[11px] space-y-1.5 bg-red-50/60 p-2 rounded">
+                        <div className="font-bold text-red-900 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping" />
+                          Required Emergency Subtypes:
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {DISASTER_TYPES.map((dt) => (
+                            <Link
+                              key={dt.key}
+                              to={`/complaints/new?category=DISASTERS&disaster_type=${dt.key}`}
+                              className="px-1.5 py-0.5 bg-red-100 text-red-900 font-mono text-[10px] rounded font-semibold border border-red-200 hover:bg-red-200 transition-colors"
+                              title={`Report ${dt.label}`}
+                            >
+                              {dt.key}
+                            </Link>
+                          ))}
+                        </div>
                       </div>
-                      <div className="flex flex-wrap gap-1">
-                        {DISASTER_TYPES.map((dt) => (
-                          <span
-                            key={dt.key}
-                            className="px-1.5 py-0.5 bg-red-100 text-red-900 font-mono text-[10px] rounded font-semibold border border-red-200"
-                          >
-                            {dt.key}
-                          </span>
-                        ))}
-                      </div>
+                      <Link
+                        to={targetUrl}
+                        className="flex items-center justify-between text-xs font-semibold text-red-700 hover:text-red-800 transition-colors pt-1"
+                      >
+                        <span>Report in this category</span>
+                        <ChevronRight className="w-3.5 h-3.5 transform group-hover:translate-x-1 transition-transform" />
+                      </Link>
                     </div>
                   ) : (
-                    <div className="pt-2.5 border-t border-civic-border flex items-center justify-between text-xs font-semibold text-emerald-700">
+                    <Link
+                      to={targetUrl}
+                      className="pt-2.5 border-t border-civic-border flex items-center justify-between text-xs font-semibold text-emerald-700 hover:text-emerald-800 transition-colors"
+                    >
                       <span>Report in this category</span>
                       <ChevronRight className="w-3.5 h-3.5 transform group-hover:translate-x-1 transition-transform" />
-                    </div>
+                    </Link>
                   )}
                 </div>
               </div>

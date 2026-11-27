@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { createComplaint, uploadEvidenceImage, checkDuplicateComplaint } from '../services/complaintApi.ts';
 import {
   ComplaintCategory,
@@ -27,11 +27,25 @@ import {
 
 export const ReportComplaintPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Read initial category from query parameters if provided
+  const categoryParam = searchParams.get('category')?.toUpperCase();
+  const initialCategory: ComplaintCategory =
+    categoryParam && COMPLAINT_CATEGORIES.some((c) => c.key === categoryParam)
+      ? (categoryParam as ComplaintCategory)
+      : 'POTHOLES';
+
+  const disasterParam = searchParams.get('disaster_type')?.toUpperCase();
+  const initialDisaster: DisasterType =
+    disasterParam && DISASTER_TYPES.some((d) => d.key === disasterParam)
+      ? (disasterParam as DisasterType)
+      : 'FIRE';
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [primaryCategory, setPrimaryCategory] = useState<ComplaintCategory>('POTHOLES');
-  const [disasterType, setDisasterType] = useState<DisasterType>('FIRE');
+  const [primaryCategory, setPrimaryCategory] = useState<ComplaintCategory>(initialCategory);
+  const [disasterType, setDisasterType] = useState<DisasterType>(initialDisaster);
   const [latitude, setLatitude] = useState<string>('');
   const [longitude, setLongitude] = useState<string>('');
   const [addressText, setAddressText] = useState('');
@@ -99,6 +113,18 @@ export const ReportComplaintPage: React.FC = () => {
       stopCameraStream();
     };
   }, [stopCameraStream]);
+
+  // Synchronize category and disaster type if query params change
+  useEffect(() => {
+    const cat = searchParams.get('category')?.toUpperCase();
+    if (cat && COMPLAINT_CATEGORIES.some((c) => c.key === cat)) {
+      setPrimaryCategory(cat as ComplaintCategory);
+    }
+    const dt = searchParams.get('disaster_type')?.toUpperCase();
+    if (dt && DISASTER_TYPES.some((d) => d.key === dt)) {
+      setDisasterType(dt as DisasterType);
+    }
+  }, [searchParams]);
 
   const processAndUploadFiles = async (files: FileList | File[]) => {
     const fileArray = Array.from(files);

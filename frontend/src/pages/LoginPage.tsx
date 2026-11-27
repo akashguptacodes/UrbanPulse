@@ -29,7 +29,10 @@ export const LoginPage: React.FC = () => {
     try {
       await login({ email: email.trim(), password });
       // Redirect back to original destination or to /complaints
-      const fromPath = (location.state as { from?: { pathname?: string } })?.from?.pathname || '/complaints';
+      const from = (location.state as { from?: { pathname?: string; search?: string } })?.from;
+      const fromPath = from
+        ? `${from.pathname || '/complaints'}${from.search || ''}`
+        : '/complaints';
       navigate(fromPath, { replace: true });
     } catch (err: unknown) {
       const message =
